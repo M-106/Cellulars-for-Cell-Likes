@@ -3,16 +3,28 @@
 
 NCA for Skin Cancer Classification and Segmentation. Cellular logic on cell-like structures. A comparison between SOTA approaches and neural cellular automates.
 
+<br>
+
+> **NCAs on ISIC 2019 Image Only Lesion Diagnosis**
+
 
 <br><br>
 
 ---
 ### Core Idea
 
-Applying neural cellular automates onto skin cancer image data for classification and segmentation and comparing the results to [Skin cancer segmentation and recognition from dermoscopy images](https://www.sciencedirect.com/science/article/pii/S209012322500654X).
+Applying neural cellular automates onto skin cancer image data for classification (and maybe segmentation) and comparing the results to [ISIC 2019 Lesion Diagnosis (Image Only)](https://challenge.isic-archive.com/leaderboards/2019/).
 
 
-> The Datapipeline must be as similiar as possible. Is there maybe code for the pipeline?
+> Maybe the comparison is made on the official challenge benchmark score-board, because there we have a score board + data split and also could use maybe pretrained models to verify the local pipeline. => FIXME chceck that out (see gemini answer)
+
+
+<br><br>
+
+---
+### Approach Idea: Image-Classification-Task NCA
+
+FIXME
 
 
 <br><br>
@@ -34,23 +46,13 @@ Maybe in that way the NCA looks at the shape and symmetry for channel 5 (classif
 ---
 ### Sources
 
-- Core comparison paper [link](https://www.sciencedirect.com/science/article/pii/S209012322500654X)
-    - ```
-        @article{ARSHAD2026575,
-            title = {Skin cancer segmentation and recognition from dermoscopy images: a novel framework based on improved DeepLabV3+ and network-level fused deep architectures},
-            journal = {Journal of Advanced Research},
-            volume = {83},
-            pages = {575-600},
-            year = {2026},
-            issn = {2090-1232},
-            doi = {https://doi.org/10.1016/j.jare.2025.08.039},
-            url = {https://www.sciencedirect.com/science/article/pii/S209012322500654X},
-            author = {Mehak Arshad and Muhammad Attique Khan and Juan Manuel Górriz and Jamel Baili and Dina Abdulaziz AlHammadi and Chomyong Kim and Yunyoung Nam},
-            keywords = {Artificial intelligence, Dermoscopy, Explainable AI, Fused network, Lesion classification, Lesion segmentation, Skin cancer}
-        }
-        ```
+- Benchmark (Data & Comparison)
+    - [ISIC-2019](https://www.kaggle.com/datasets/salviohexia/isic-2019-skin-lesion-images-for-classification)
+    - [Leaderboard of ISIC-2019](https://challenge.isic-archive.com/leaderboards/2019/)
 - Dataset (depends on which using in the end: `HAM10000, ISIC-2018, ISIC-2019, and/or ISBI-2020`)
-    - FIXME
+    - [Data-Loader: Fed-ISIC-2019](https://huggingface.co/datasets/flwrlabs/fed-isic2019)
+    - [ISIC 2019 Skin Lesion Image Classification](https://www.kaggle.com/datasets/salviohexia/isic-2019-skin-lesion-images-for-classification)
+    - [Backup Dataset: HAM10000](https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000)
 - Cellular Automates:
     - NCAs are better than UNet in Segmentation:
         - `Med-NCA: Robust and Lightweight Segmentation with Neural Cellular Automata` (arxiv, 2023)
@@ -60,6 +62,9 @@ Maybe in that way the NCA looks at the shape and symmetry for channel 5 (classif
         - collective voting from NCA, shown mathematically: `Self-classifying MNIST Digits` (Mordvintsev et al., 2020)
     - Possible Code basis: [M3D-NCA](https://github.com/MECLabTUDA/M3D-NCA)
     - FIXME (best lib for that? Own?)
+- Paper which make similiar things:
+    - [Measuring Prediction Uncertainty in Neural Cellular Automata](https://arxiv.org/abs/2605.26726)
+    - [Skin cancer segmentation and recognition from dermoscopy images: a novel framework based on improved DeepLabV3+ and network-level fused deep architectures](https://www.sciencedirect.com/science/article/pii/S209012322500654X)
 
 
 
