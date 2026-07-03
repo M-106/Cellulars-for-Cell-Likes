@@ -1,0 +1,43 @@
+
+mode: "train"  # "train", "test"
+
+
+
+train:
+    num_epochs: 300
+    batch_size: 36
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    criterion: "CrossEntropyLoss"
+    optimizer: "Adam"
+    scheduler: None
+    output_dir: "./output"
+    exp_name: "first_try"
+
+
+
+model:
+    name: "standard-nca"
+    check_point_path: None
+
+
+
+data:
+    name: "isic-2019"
+    path: "F:\data\ISIC-2019_Skin_Lesion"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

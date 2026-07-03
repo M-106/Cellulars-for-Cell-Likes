@@ -16,8 +16,31 @@ NCA for Skin Cancer Classification and Segmentation. Cellular logic on cell-like
 Applying neural cellular automates onto skin cancer image data for classification (and maybe segmentation) and comparing the results to [ISIC 2019 Lesion Diagnosis (Image Only)](https://challenge.isic-archive.com/leaderboards/2019/).
 
 
-> Maybe the comparison is made on the official challenge benchmark score-board, because there we have a score board + data split and also could use maybe pretrained models to verify the local pipeline. => FIXME chceck that out (see gemini answer)
 
+
+<br><br>
+
+---
+### Installation
+
+1. Prepare Env
+    1. Install Anaconda
+    2. Open Anaconda Prompt
+    3. Create env (you might to install another pytorch version):
+        ```bash
+        conda create -n cfc python=3.14 pip -y
+        conda activate cfc
+        ```
+2. Download Dataset via https://challenge.isic-archive.com/data/#2019
+    - Download `Training Data` Task 1 -> 9,1 GB
+    - Download `Training Ground Truth` -> 1 MB
+    - Download `Test Data` Task 1 -> 3,6 GB
+    - Download `Test Ground Truth` -> 454 KB
+    - Unzip everything into one folder
+3. Adjust the config file
+4. Run it
+    1. Activate the env in VS Code (as current used interpreter)
+    2. Open any python file + Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
 
 <br><br>
 

@@ -1,0 +1,42 @@
+[project]
+name = "cfc"
+version = "0.1.0"
+description = "Cellulars for Cell-Likes. Cellular logic on cell-like structures."
+authors = [
+  { name="Tobia Ippolito" }
+]
+readme = "README.md"  # or ../../README.md
+
+dependencies = [
+    "pydantic",
+    "pyyaml",
+    
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "pillow",
+
+    "tqdm",
+    "torch==2.12.1",
+    "torchvision==0.27.1",
+    # "torch torchvision --index-url https://download.pytorch.org/whl/cu132",
+    "flwr-datasets[vision]",
+    "tensorboard",
+
+    # "scipy",
+    "scikit-learn",
+    # "scikit-image",
+    # "segmentation_models_pytorch",
+]
+
+[tool.pip]
+index-url = "https://download.pytorch.org/whl/cu132"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+cfc = "cfc.main:main"
+
+
