@@ -1,2 +1,5 @@
 src/cfc.egg-info
-src/cfc/__pycache__/
+__pycache__
+output
+
+

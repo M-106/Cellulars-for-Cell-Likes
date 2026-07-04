@@ -6,18 +6,104 @@ import os
 import shutil
 
 import torch
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from cfc.utils.config import save_config
+from cfc.utils.metrics import calculate_isic_metrics
+from cfc.utils.data import get_data
+from cfc.model.model_loading import get_model
+from cfc.utils.optimizer import get_optimizer
+from cfc.utils.scheduler import get_scheduler
+from cfc.utils.criterion import get_criterion
+from cfc.utils.config import log_config_to_tensorboard, config_as_str
+from cfc.model.neural_cellular_automata import measure_nca_stability
+
+
+
+# ----------
+# > Helper <
+# ----------
+def plot_sample_images(input_img, pred_img, class_label, class_name, save_path=None):
+    """
+    Plot sample images for classication with NCA
+    """
+    plt.style.use('seaborn-whitegrid')
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+    ax[0].imshow(input_img)
+    ax[0].set_title("Input Image")
+    ax[0].axis("off")
+
+    ax[1].imshow(pred_img)
+    ax[1].set_title("Predicted Image")
+    ax[1].text(0.5, -0.1, f"Class: {class_name} (Label: {class_label})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
+    ax[1].axis("off")
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    else:
+        plt.show()
 
 
 
 # --------------
 # > Train Loop <
 # --------------
+def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoch, output_dir=None):
+    model.eval()
+    all_predictions = []
+    all_labels = []
+    weights = []
+    loss = 0.0
+    plots = 0
+
+    with torch.no_grad():
+        for imgs, labels, _, validation_weights in data_loader:
+            imgs = imgs.to(device)
+            labels = labels.to(device)
+
+            l2_stability = measure_nca_stability(model, imgs[0:1])
+            tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
+
+            outputs = model(imgs)
+            loss += criterion(outputs, labels).mean().item()  # mean to avoid gradient explosion
+
+            if plots < 5:  # only plot a few samples
+                last_state = model.get_last_state(imgs[0:1])  # [1, C, H, W]
+                pred_grid = last_state[0].detach().cpu().permute(1, 2, 0).numpy()
+                pred_img = pred_grid[:, :, :3]
+                # min-max normalization, to [0, 1]
+                pred_img = (pred_img - pred_img.min()) / \
+                           (pred_img.max() - pred_img.min()) 
+                save_path = f"{output_dir}/sample_plot_{cur_epoch}_{plots}.png" if output_dir else None
+                plot_sample_images(
+                    input_img=imgs[0].cpu().permute(1, 2, 0).numpy(),
+                    pred_img=pred_img,
+                    class_label=labels[0].cpu().numpy(),
+                    class_name=data_loader.dataset.class_names[labels[0].cpu().numpy()],
+                    save_path=save_path
+                )
+                plots += 1  
+
+            _, preds = torch.max(outputs, 1)
+
+            all_predictions.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            weights.extend(validation_weights.cpu().numpy())
+
+    # calc metrics
+    metrics = calculate_isic_metrics(all_labels, all_predictions)  # , sample_weights=weights -> we have another validation split!
+    print(f"Weighted Balanced Val Accuracy: {metrics['balanced_accuracy']:.4f}")
+    return metrics, loss / len(data_loader)
+
+
 
 def train(
         model_name, 
-        dataset_name, 
+        data_path, 
         num_epochs, 
         batch_size, 
         learning_rate, 
@@ -26,14 +112,15 @@ def train(
         optimizer, 
         scheduler, 
         output_dir,
-        exp_name
+        exp_name,
+        config
     ):
     """
     Train a model on a specified dataset.
 
     Args:
         model_name (str): Name of the model to train.
-        dataset_name (str): Name of the dataset to use.
+        data_path (str): Path to the dataset.
         num_epochs (int): Number of epochs to train for.
         batch_size (int): Batch size for training.
         learning_rate (float): Learning rate for the optimizer.
@@ -43,24 +130,108 @@ def train(
         scheduler (str): Learning rate scheduler to use.
         output_dir (str): Directory to save the trained model, plots, and logs.
         exp_name (str): Name of the experiment for logging and saving purposes.
+        config (pydantic.BaseModel): Configuration object for user setting handling.
     """
     # get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = torch.accelerator.current_accelerator()
 
     # get data
-    train_data = get_data(dataset_name, batch_size, partition="train")
+    train_data = get_data(
+        data_path=data_path, 
+        batch_size=16, 
+        partition="train",
+        shuffle=True
+    )
     val_data = get_data(
-        dataset_name=dataset_name, 
+        data_path=data_path, 
         batch_size=batch_size, 
         partition="val",
         shuffle=False
     )
 
+    # get model
+    model = get_model(model_name, num_classes=len(train_data.dataset.class_names))
+    model.to(device)
+    
+    optimizer = get_optimizer(optimizer, model.parameters(), learning_rate, weight_decay)
+    scheduler = get_scheduler(scheduler, optimizer, num_epochs)
+    criterion = get_criterion(criterion)
+
+    tensorboard_dir = f"{output_dir}/logs/{exp_name}"
+    tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir)
+    # add all configs to tensorboard
+    tensorboard_writer.add_text("Model-Name", str(model_name))
+    tensorboard_writer.add_text("Data-Path", str(data_path))
+    tensorboard_writer.add_text("Num-Epochs", str(num_epochs))
+    tensorboard_writer.add_text("Batch-Size", str(batch_size))
+    tensorboard_writer.add_text("Learning-Rate", str(learning_rate))
+    tensorboard_writer.add_text("Weight-Decay", str(weight_decay))
+    tensorboard_writer.add_text("Criterion", str(criterion))
+    tensorboard_writer.add_text("Optimizer", str(optimizer))
+    tensorboard_writer.add_text("Scheduler", str(scheduler))
+
+    log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
+
+    best_val_accuracy = 0.0
+    best_model_epoch = -1
+    latest_model_epoch = -1
+    best_checkpoint_path = None
+
+    for epoch in tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
+        model.train()
+        running_loss = 0.0
+
+        for imgs, labels, _, _ in train_data:
+            imgs = imgs.to(device)
+            labels = labels.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(imgs)
+            loss = criterion(outputs, labels).mean()  # mean to avoid gradient explosion
+            loss.backward()  
+
+            # gradient clipping -> important with NCAs
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+            optimizer.step()
+            running_loss += loss.item()
+
+        scheduler.step()
+
+        avg_loss = running_loss / len(train_data)
+        tensorboard_writer.add_scalar("Loss/Train", avg_loss, epoch)
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
+
+        # Validate after each epoch
+        metrics, val_loss = validate(model, criterion, val_data, device, tensorboard_writer, cur_epoch=epoch, output_dir=output_dir)
+        tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
+        tensorboard_writer.add_scalar("Balanced_Accuracy/Validation", metrics['balanced_accuracy'], epoch)
 
 
+        # Save Weights
+        checkpoint_path = f"{output_dir}/latest_model.pth"
+        torch.save(model.state_dict(), checkpoint_path)
+        latest_model_epoch = epoch
 
-
+        if best_val_accuracy < metrics['balanced_accuracy']:
+            best_val_accuracy = metrics['balanced_accuracy']
+            best_checkpoint_path = f"{output_dir}/best_model.pth"
+            torch.save(model.state_dict(), best_checkpoint_path)
+            print(f"Best model saved with Balanced Accuracy: {best_val_accuracy:.4f}")
+            best_model_epoch = epoch
+    
+    with open(f"{output_dir}/training_summary.txt", "w") as f:
+        f.write(f"Training: {exp_name}\n")
+        f.write(f"Output Directory: {output_dir}\n")
+        f.write(f"Tensorboard Directory: {tensorboard_dir}\n")
+        f.write(f"Best Model Epoch: {best_model_epoch}\n")
+        f.write(f"Best Model Path: {best_checkpoint_path}\n")
+        f.write(f"Best Validation Balanced Accuracy: {best_val_accuracy:.4f}\n")
+        f.write(f"Latest Model Epoch: {latest_model_epoch}\n")
+        f.write(f"Latest Model Path: {checkpoint_path}\n")
+        f.write(f"\n\nConfig:\n{config_as_str(config)}\n")
+        
 
 
 
@@ -72,7 +243,7 @@ def main(config):
 
     # extract configs
     model_name = config.model.name
-    dataset_name = config.data.name
+    data_path = config.data.path
     num_epochs = config.train.num_epochs
     batch_size = config.train.batch_size
     learning_rate = config.train.learning_rate
@@ -87,8 +258,8 @@ def main(config):
     # create exp output folder
     output_dir = f"{output_dir}/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{exp_name}"
     os.makedirs(output_dir, exist_ok=True)
-    shutil.rmtree(output_dir)
-    os.makedirs(output_dir, exist_ok=True)
+    # shutil.rmtree(output_dir)
+    # os.makedirs(output_dir, exist_ok=True)
 
 
     # track config for this run
@@ -98,7 +269,7 @@ def main(config):
     # start training
     train(
         model_name=model_name,
-        dataset_name=dataset_name,
+        data_path=data_path,
         num_epochs=num_epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
@@ -107,7 +278,8 @@ def main(config):
         optimizer=optimizer,
         scheduler=scheduler,
         output_dir=output_dir,
-        exp_name=exp_name
+        exp_name=exp_name,
+        config=config
     )
 
 

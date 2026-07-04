@@ -42,6 +42,19 @@ Applying neural cellular automates onto skin cancer image data for classificatio
     1. Activate the env in VS Code (as current used interpreter)
     2. Open any python file + Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
 
+
+<br><br>
+
+---
+### Experiments & Results
+
+> First run, make a "dry run" & a overfit-test. Maybe you have to remove the last activation layer.
+
+<br>
+
+...
+
+
 <br><br>
 
 ---

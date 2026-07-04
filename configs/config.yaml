@@ -4,27 +4,43 @@ mode: "train"  # "train", "test"
 
 
 train:
-    num_epochs: 300
+    num_epochs: 50
     batch_size: 36
     learning_rate: 0.001
     weight_decay: 0.0001
-    criterion: "CrossEntropyLoss"
-    optimizer: "Adam"
-    scheduler: None
+    criterion: "focal_loss"  # "cross_entropy", "focal_loss"
+    optimizer: "Adamw"  # "Adamw", "SGD"
+    scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "first_try"
+    exp_name: "first_run"
 
+
+
+test:
+    batch_size: 36
+    output_dir: "./output"
 
 
 model:
-    name: "standard-nca"
+    name: "standard_nca"
     check_point_path: None
+    kwargs:
+        hidden_channels: 16                             # 8, 16, 32, 64, 128
+        steps: 12                                       # 8, 16, 32
+        update_blocks: 1                                # 1, 2, 4, 8, 16
+        update_blocks_activation_kernel_size: 3         # 3
+        update_blocks_activation_kernel_size_2: 1 
+        update_blocks_activation: "relu"                # "relu", "leaky_relu"
+        final_update_block_activation_kernel_size: 1    # 1
+        final_update_block_activation: "sigmoid"        # "sigmoid", "tanh"
+        perception_filter: "sobel"                      # "sobel", "laplacian"
+        dropout: 0.1                                    # 0.0, 0.1, 0.2, 0.3
 
 
 
 data:
-    name: "isic-2019"
-    path: "F:\data\ISIC-2019_Skin_Lesion"
+    path: "F:/data/ISIC-2019_Skin_Lesion"
+    # name: "isic-2019"
 
 
 
