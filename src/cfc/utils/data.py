@@ -1,6 +1,8 @@
 # -----------
 # > Imports <
 # -----------
+import os
+
 import pandas as pd
 
 from PIL import Image
@@ -20,7 +22,7 @@ from sklearn.model_selection import train_test_split
 # > Dataset <
 # -----------
 class ISIC2019Dataset(Dataset):
-    def __init__(self, data_path, partition="val", transform=None):
+    def __init__(self, data_path, partition="val", transform=None, used_samples=-1):
         """
         Random split with seed for reproducability. Stratified split to maintain class distribution.
 
@@ -38,6 +40,7 @@ class ISIC2019Dataset(Dataset):
         self.transform = transform
         self.class_names = ["MEL", "NV", "BCC", "AK", "BKL", "DF", "VASC", "SCC", "UNK"]
         self.class_to_idx = {name: i for i, name in enumerate(self.class_names)}
+        self.idx_to_class = {value: key for key, value in self.class_to_idx.items()}
 
         if partition in ["train", "val"]:
             self.img_folder = f"{data_path}/ISIC_2019_Training_Input/"
@@ -74,12 +77,21 @@ class ISIC2019Dataset(Dataset):
 
         else:
             self.img_folder = f"{data_path}/ISIC_2019_Test_Input/"
-            self.labels = pd.read_csv(f"{data_path}/ISIC_2019_Test_GroundTruth.csv")
+            file_path = os.path.join(data_path, "ISIC_2019_Test_GroundTruth.csv")
+
+            # print(f"Exists: {os.path.exists(file_path)}")
+            # print(f"Size: {os.path.getsize(file_path)} Bytes")
+            
+            self.labels = pd.read_csv(file_path)
             self.labels["label"] = (
                 self.labels[self.class_names]
                 .idxmax(axis=1)
                 .map(self.class_to_idx)
             )
+
+        # filter/reduce
+        if used_samples > 0:
+            self.labels = self.labels.sample(n=used_samples)
 
     def __len__(self):
         return len(self.labels)
@@ -117,7 +129,8 @@ def get_data(
         data_path, 
         batch_size=16, 
         partition="val",
-        shuffle=False
+        shuffle=False,
+        used_samples=-1
     ):
     
 
@@ -128,9 +141,9 @@ def get_data(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations)
+    dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations, used_samples=used_samples)
 
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)  # num_workers=0
 
 
 

@@ -1,9 +1,15 @@
 # -----------
 # > Imports <
 # -----------
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.utils as vutils
+
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 
 from cfc.model.utils import init_weights
 
@@ -283,7 +289,44 @@ class NeuralCellularAutomata(torch.nn.Module):
         logits = self.classification_head(x)
         return logits
 
-    
+
+    def save_transition_sequence(self, x, save_path):
+        """
+        Saves the state of the NCA at each step as an image file.
+        """
+        x = x[0:1]
+
+        current_x = self.input_projection_net(x)
+
+        history = []
+        history.append(current_x.detach().cpu())
+
+        for _ in range(self.steps):
+            current_x = self.step(current_x)
+            history.append(current_x.detach().cpu())
+
+        # apply PCA
+        history_tensor = torch.cat(history, dim=0)
+        T, C, H, W = history_tensor.shape
+
+        data = history_tensor.permute(0, 2, 3, 1).reshape(-1, C).numpy()
+
+        pca = PCA(n_components=3)
+        pca_data = pca.fit_transform(data)
+
+        pca_images = pca_data.reshape(T, H, W, 3).transpose(0, 3, 1, 2)
+        pca_images = torch.from_numpy(pca_images)
+        pca_images = (pca_images - pca_images.min()) / (pca_images.max() - pca_images.min())
+
+        # make a grid from the images
+        grid_img = vutils.make_grid(pca_images, nrow=len(pca_images), padding=2, normalize=False)
+
+        plt.figure(figsize=(5*self.steps, 5))
+        plt.imshow(grid_img.permute(1, 2, 0))
+        plt.axis("off")
+        plt.title(f"NCA Transition Sequence (Steps: {self.steps})")
+        plt.savefig(save_path)
+        plt.close()
 
 
 

@@ -50,9 +50,59 @@ Applying neural cellular automates onto skin cancer image data for classificatio
 
 > First run, make a "dry run" & a overfit-test. Maybe you have to remove the last activation layer.
 
+Checking the results do:
+1. Open Anaconda Prompt
+2. Start env and tensorboard
+    ```bash
+    conda activate cfc && tensorboard --logdir="F:\Studium\Master\3.Semester\Teamwork\Cellulars-for-Cell-Likes\output\2026-07-05_14-33-30_overfit\logs"
+    ```
+
+<!--
+"F:\Studium\Master\3.Semester\Teamwork\Cellulars-for-Cell-Likes\output\2026-07-05_14-33-30_overfit\logs"
+-->
+
 <br>
 
-...
+**Experiment 1: Overfitting on 5 Samples**
+
+Configs:
+```yaml
+train:
+    num_epochs: 200
+    batch_size: 5
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    criterion: "focal_loss"
+    optimizer: "Adamw"
+    scheduler: "cosine"
+    output_dir: "./output"
+    exp_name: "overfit"
+    used_train_samples: 5
+    used_val_samples: 5
+```
+
+Result on Test-Data with official weighting:
+```text
+Test Metrics:
+  - balanced_accuracy: 0.21658527520156512
+  - detailed_report:
+              precision    recall  f1-score   support
+
+         MEL       0.33      0.24      0.28      1775
+          NV       0.86      0.35      0.50      6137
+         BCC       0.00      0.00      0.00         0
+          AK       0.02      0.03      0.03       326
+         BKL       0.00      0.00      0.00         0
+          DF       0.00      0.00      0.00         0
+        VASC       0.00      0.00      0.00         0
+         SCC       0.00      0.00      0.00         0
+         UNK       0.00      0.00      0.00         0
+
+    accuracy                           0.32      8238
+   macro avg       0.13      0.07      0.09      8238
+weighted avg       0.71      0.32      0.43      8238
+```
+
 
 
 <br><br>

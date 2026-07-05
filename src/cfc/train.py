@@ -7,11 +7,12 @@ import shutil
 
 import torch
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
 from cfc.utils.config import save_config
-from cfc.utils.metrics import calculate_isic_metrics
+from cfc.utils.metrics import calculate_isic_metrics, get_used_label_names
 from cfc.utils.data import get_data
 from cfc.model.model_loading import get_model
 from cfc.utils.optimizer import get_optimizer
@@ -25,27 +26,31 @@ from cfc.model.neural_cellular_automata import measure_nca_stability
 # ----------
 # > Helper <
 # ----------
-def plot_sample_images(input_img, pred_img, class_label, class_name, save_path=None):
+def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_label, class_label_name, save_path=None):
     """
     Plot sample images for classication with NCA
     """
-    plt.style.use('seaborn-whitegrid')
+    plt.style.use('ggplot')
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
 
+    input_img = (input_img - input_img.min()) / (input_img.max() - input_img.min())
     ax[0].imshow(input_img)
     ax[0].set_title("Input Image")
+    ax[0].text(0.5, -0.1, f"Class: {class_label} (Label: {class_label_name})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
     ax[0].axis("off")
 
     ax[1].imshow(pred_img)
     ax[1].set_title("Predicted Image")
-    ax[1].text(0.5, -0.1, f"Class: {class_name} (Label: {class_label})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
+    ax[1].text(0.5, -0.1, f"Class: {class_pred} (Label: {class_pred_name})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
     ax[1].axis("off")
 
-    plt.tight_layout()
+    # plt.tight_layout()
     if save_path:
         plt.savefig(save_path)
     else:
         plt.show()
+
+    plt.close(fig)
 
 
 
@@ -68,22 +73,34 @@ def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoc
             l2_stability = measure_nca_stability(model, imgs[0:1])
             tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
 
+            model.save_transition_sequence(x=imgs, save_path=os.path.join(output_dir, f"nca_transition_epoch_{cur_epoch:03}.png"))
+
             outputs = model(imgs)
             loss += criterion(outputs, labels).mean().item()  # mean to avoid gradient explosion
 
             if plots < 5:  # only plot a few samples
                 last_state = model.get_last_state(imgs[0:1])  # [1, C, H, W]
                 pred_grid = last_state[0].detach().cpu().permute(1, 2, 0).numpy()
-                pred_img = pred_grid[:, :, :3]
+                H, W, C = pred_grid.shape
+                # pred_img = pred_grid[:, :, :3]
+                pca = PCA(n_components=3)
+                pca_data = pca.fit_transform(pred_grid.reshape(H * W, C))
+                pred_img = pca_data.reshape(H, W, 3)
                 # min-max normalization, to [0, 1]
                 pred_img = (pred_img - pred_img.min()) / \
                            (pred_img.max() - pred_img.min()) 
+
+                pred_label = torch.argmax(outputs[0], dim=0).item()
+                gt_label = labels[0].item()  # labels[0].detach().cpu().numpy()
+
                 save_path = f"{output_dir}/sample_plot_{cur_epoch}_{plots}.png" if output_dir else None
                 plot_sample_images(
-                    input_img=imgs[0].cpu().permute(1, 2, 0).numpy(),
+                    input_img=imgs[0].detach().cpu().permute(1, 2, 0).numpy(),
                     pred_img=pred_img,
-                    class_label=labels[0].cpu().numpy(),
-                    class_name=data_loader.dataset.class_names[labels[0].cpu().numpy()],
+                    class_pred=pred_label,
+                    class_pred_name=data_loader.dataset.idx_to_class[pred_label],
+                    class_label=gt_label,  
+                    class_label_name=data_loader.dataset.idx_to_class[gt_label],
                     save_path=save_path
                 )
                 plots += 1  
@@ -95,7 +112,8 @@ def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoc
             weights.extend(validation_weights.cpu().numpy())
 
     # calc metrics
-    metrics = calculate_isic_metrics(all_labels, all_predictions)  # , sample_weights=weights -> we have another validation split!
+    used_label_names = get_used_label_names(all_labels, all_predictions, idx_to_class=data_loader.dataset.idx_to_class)
+    metrics = calculate_isic_metrics(all_labels, all_predictions, used_label_names, None)  # , sample_weights=weights -> we have another validation split!
     print(f"Weighted Balanced Val Accuracy: {metrics['balanced_accuracy']:.4f}")
     return metrics, loss / len(data_loader)
 
@@ -113,6 +131,8 @@ def train(
         scheduler, 
         output_dir,
         exp_name,
+        used_train_samples,
+        used_val_samples,
         config
     ):
     """
@@ -130,6 +150,8 @@ def train(
         scheduler (str): Learning rate scheduler to use.
         output_dir (str): Directory to save the trained model, plots, and logs.
         exp_name (str): Name of the experiment for logging and saving purposes.
+        used_train_samples (int): Decides how much samples getting used for training.
+        used_val_samples (int): Decides how much samples getting used for validation.
         config (pydantic.BaseModel): Configuration object for user setting handling.
     """
     # get device
@@ -139,15 +161,17 @@ def train(
     # get data
     train_data = get_data(
         data_path=data_path, 
-        batch_size=16, 
+        batch_size=batch_size, 
         partition="train",
-        shuffle=True
+        shuffle=True,
+        used_samples=used_train_samples
     )
     val_data = get_data(
         data_path=data_path, 
         batch_size=batch_size, 
         partition="val",
-        shuffle=False
+        shuffle=False,
+        used_samples=used_val_samples
     )
 
     # get model
@@ -158,7 +182,8 @@ def train(
     scheduler = get_scheduler(scheduler, optimizer, num_epochs)
     criterion = get_criterion(criterion)
 
-    tensorboard_dir = f"{output_dir}/logs/{exp_name}"
+    # tensorboard_dir = f"{output_dir}/logs/{exp_name}"
+    tensorboard_dir = f"{output_dir}/logs"
     tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir)
     # add all configs to tensorboard
     tensorboard_writer.add_text("Model-Name", str(model_name))
@@ -170,19 +195,25 @@ def train(
     tensorboard_writer.add_text("Criterion", str(criterion))
     tensorboard_writer.add_text("Optimizer", str(optimizer))
     tensorboard_writer.add_text("Scheduler", str(scheduler))
+    tensorboard_writer.add_text("Train-Data Len", str(len(train_data)))
+    tensorboard_writer.add_text("Valid-Data Len", str(len(val_data)))
 
     log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
+
+    input_data = next(iter(val_data))[0].to(device)
+    model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_000.png"))
+    del input_data
 
     best_val_accuracy = 0.0
     best_model_epoch = -1
     latest_model_epoch = -1
     best_checkpoint_path = None
 
-    for epoch in tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
+    for epoch in range(num_epochs):    # tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
         model.train()
         running_loss = 0.0
 
-        for imgs, labels, _, _ in train_data:
+        for imgs, labels, _, _ in tqdm(train_data, total=len(train_data), desc=f"NCA Training Epoch {epoch:03}"):
             imgs = imgs.to(device)
             labels = labels.to(device)
 
@@ -231,6 +262,8 @@ def train(
         f.write(f"Latest Model Epoch: {latest_model_epoch}\n")
         f.write(f"Latest Model Path: {checkpoint_path}\n")
         f.write(f"\n\nConfig:\n{config_as_str(config)}\n")
+
+    tensorboard_writer.close()
         
 
 
@@ -253,6 +286,8 @@ def main(config):
     scheduler = config.train.scheduler
     output_dir = config.train.output_dir
     exp_name = config.train.exp_name
+    used_train_samples = config.train.used_train_samples
+    used_val_samples = config.train.used_val_samples
 
 
     # create exp output folder
@@ -279,6 +314,8 @@ def main(config):
         scheduler=scheduler,
         output_dir=output_dir,
         exp_name=exp_name,
+        used_train_samples=used_train_samples,
+        used_val_samples=used_val_samples,
         config=config
     )
 

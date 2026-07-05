@@ -6,9 +6,11 @@ import shutil
 
 import torch
 
+from tqdm import tqdm
+
+from cfc.utils.metrics import calculate_isic_metrics, get_used_label_names
 from cfc.utils.data import get_data
 from cfc.model.model_loading import get_model
-from cfc.utils.metrics import calculate_isic_metrics
 
 
 
@@ -22,7 +24,7 @@ def evaluate(model, data_loader, device):
     weights = []
 
     with torch.no_grad():
-        for inputs, labels, score_weight, validation_weight in data_loader:
+        for inputs, labels, score_weight, validation_weight in tqdm(data_loader, total=len(data_loader), desc="Test Epoch"):
             inputs, labels = inputs.to(device), labels.to(device)
 
             outputs = model(inputs)
@@ -32,7 +34,8 @@ def evaluate(model, data_loader, device):
             all_labels.extend(labels.cpu().numpy())
             weights.extend(score_weight)  # Assuming equal weights for each sample
 
-    metrics = calculate_isic_metrics(all_predictions, all_labels, weights)
+    used_label_names = get_used_label_names(all_labels, all_predictions, idx_to_class=data_loader.dataset.idx_to_class)
+    metrics = calculate_isic_metrics(all_predictions, all_labels, used_label_names, weights)
     return metrics
 
 
@@ -57,7 +60,8 @@ def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
         data_path=data_path, 
         batch_size=batch_size, 
         partition="test",
-        shuffle=False
+        shuffle=False, 
+        used_samples=-1
     )
 
     # get model
@@ -69,8 +73,10 @@ def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
     # Save metrics and loss to a text file
     with open(f"{output_dir}/test_summary.txt", "w") as f:
         f.write(f"Test Metrics:\n")
-        for key, value in metrics.items():
-            f.write(f"  - {key}: {value}\n")    
+        # for key, value in metrics.items():
+        #     f.write(f"  - {key}:\n{value}\n")  
+        f.write(f"  - balanced_accuracy: {metrics["balanced_accuracy"]}\n")
+        f.write(f"  - detailed_report:\n{metrics["detailed_report"]}\n")
         
         # f.write(f"Test Loss: {loss:.4f}\n")
 

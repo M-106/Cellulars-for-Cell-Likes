@@ -54,6 +54,8 @@ class TrainConfig(BaseModel):
     scheduler: Union[str, None]
     output_dir: str
     exp_name: str
+    used_train_samples: int
+    used_val_samples: int
 
 
 
