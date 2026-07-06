@@ -4,17 +4,17 @@ mode: "train"  # "train", "test"
 
 
 train:
-    num_epochs: 200
-    batch_size: 5  # 36
+    num_epochs: 20
+    batch_size: 16  # 36
     learning_rate: 0.001
     weight_decay: 0.0001
     criterion: "focal_loss"  # "cross_entropy", "focal_loss"
     optimizer: "Adamw"  # "Adamw", "SGD"
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "overfit"
-    used_train_samples: 5  # -1, 5
-    used_val_samples: 5   # -1, 5
+    exp_name: "first_train_try"
+    used_train_samples: -1  # -1, 5
+    used_val_samples: -1   # -1, 5
 
 
 
@@ -25,10 +25,10 @@ test:
 
 model:
     name: "standard_nca"
-    check_point_path: None 
+    check_point_path: "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
     # None 
     # "./output/2026-07-05_17-18-54_overfit/latest_model.pth"
-    # "./output/2026-07-05_23-02-57_overfit/latest_model.pth"
+    # "./output/2026-07-05_23-45-49_overfit/latest_model.pth"
     
     kwargs:
         hidden_channels: 16                             # 8, 16, 32, 64, 128
