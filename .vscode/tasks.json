@@ -5,7 +5,8 @@
       "label": "prepare-cfc",
       "type": "shell",
       // "command": "F:\\anaconda\\Scripts\\conda.exe run -n cfc pip install -e .",
-      "command": "F:\\anaconda\\Scripts\\conda.exe run -n cfc pip install -e .",
+      // "command": "F:\\anaconda\\Scripts\\conda.exe run -n cfc pip install -e .",
+      "command": "C:\\Users\\Shadow\\anaconda3\\Scripts\\conda.exe run -n cfc pip install -e .",
       // "command": "F:\anaconda\envs\cfc\python.exe -m pip install -e .",
       // "command": "C:\\Users\\tippolito\\AppData\\Local\\anaconda3\\Scripts\\conda.exe run -n cfc pip install -e .",
       "options": {

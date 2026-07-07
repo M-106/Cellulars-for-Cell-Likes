@@ -20,6 +20,7 @@ from cfc.utils.scheduler import get_scheduler
 from cfc.utils.criterion import get_criterion
 from cfc.utils.config import log_config_to_tensorboard, config_as_str
 from cfc.model.neural_cellular_automata import measure_nca_stability
+from cfc.utils.stepwise_train import save_cur_train_state, load_train_state, get_config_and_dir_from_last_train
 
 
 
@@ -36,7 +37,7 @@ def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_l
     input_img = (input_img - input_img.min()) / (input_img.max() - input_img.min())
     ax[0].imshow(input_img)
     ax[0].set_title("Input Image")
-    ax[0].text(0.5, -0.1, f"Class: {class_label} (Label: {class_label_name})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
+    ax[0].text(0.5, -0.1, f"Class: {class_label} (Label: {class_label_name})", ha='center', va='top', fontsize=10, transform=ax[0].transAxes)
     ax[0].axis("off")
 
     ax[1].imshow(pred_img)
@@ -126,14 +127,15 @@ def train(
         batch_size, 
         learning_rate, 
         weight_decay, 
-        criterion,
-        optimizer, 
-        scheduler, 
+        criterion_name,
+        optimizer_name, 
+        scheduler_name, 
         output_dir,
         exp_name,
         used_train_samples,
         used_val_samples,
-        config
+        config,
+        continue_training
     ):
     """
     Train a model on a specified dataset.
@@ -145,9 +147,9 @@ def train(
         batch_size (int): Batch size for training.
         learning_rate (float): Learning rate for the optimizer.
         weight_decay (float): Weight decay for the optimizer.
-        criterion (str): Loss/criterion to use.
-        optimizer (str): Optimizer to use.
-        scheduler (str): Learning rate scheduler to use.
+        criterion_name (str): Loss/criterion to use.
+        optimizer_name (str): Optimizer to use.
+        scheduler_name (str): Learning rate scheduler to use.
         output_dir (str): Directory to save the trained model, plots, and logs.
         exp_name (str): Name of the experiment for logging and saving purposes.
         used_train_samples (int): Decides how much samples getting used for training.
@@ -178,38 +180,44 @@ def train(
     model = get_model(model_name, num_classes=len(train_data.dataset.class_names))
     model.to(device)
     
-    optimizer = get_optimizer(optimizer, model.parameters(), learning_rate, weight_decay)
-    scheduler = get_scheduler(scheduler, optimizer, num_epochs)
-    criterion = get_criterion(criterion)
+    optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
+    scheduler = get_scheduler(scheduler_name, optimizer, num_epochs)
+    criterion = get_criterion(criterion_name)
+
+    if continue_training:
+        start_epoch, best_val_accuracy, best_model_epoch, latest_model_epoch, best_checkpoint_path = load_train_state(output_dir, model, optimizer, scheduler)
 
     # tensorboard_dir = f"{output_dir}/logs/{exp_name}"
     tensorboard_dir = f"{output_dir}/logs"
     tensorboard_writer = SummaryWriter(log_dir=tensorboard_dir)
-    # add all configs to tensorboard
-    tensorboard_writer.add_text("Model-Name", str(model_name))
-    tensorboard_writer.add_text("Data-Path", str(data_path))
-    tensorboard_writer.add_text("Num-Epochs", str(num_epochs))
-    tensorboard_writer.add_text("Batch-Size", str(batch_size))
-    tensorboard_writer.add_text("Learning-Rate", str(learning_rate))
-    tensorboard_writer.add_text("Weight-Decay", str(weight_decay))
-    tensorboard_writer.add_text("Criterion", str(criterion))
-    tensorboard_writer.add_text("Optimizer", str(optimizer))
-    tensorboard_writer.add_text("Scheduler", str(scheduler))
-    tensorboard_writer.add_text("Train-Data Len", str(len(train_data)))
-    tensorboard_writer.add_text("Valid-Data Len", str(len(val_data)))
+    if not continue_training:
+        # add all configs to tensorboard
+        tensorboard_writer.add_text("Model-Name", str(model_name))
+        tensorboard_writer.add_text("Data-Path", str(data_path))
+        tensorboard_writer.add_text("Num-Epochs", str(num_epochs))
+        tensorboard_writer.add_text("Batch-Size", str(batch_size))
+        tensorboard_writer.add_text("Learning-Rate", str(learning_rate))
+        tensorboard_writer.add_text("Weight-Decay", str(weight_decay))
+        tensorboard_writer.add_text("Criterion", str(criterion_name))
+        tensorboard_writer.add_text("Optimizer", str(optimizer_name))
+        tensorboard_writer.add_text("Scheduler", str(scheduler_name))
+        tensorboard_writer.add_text("Train-Data Len", str(len(train_data)))
+        tensorboard_writer.add_text("Valid-Data Len", str(len(val_data)))
 
-    log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
+        log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
 
-    input_data = next(iter(val_data))[0].to(device)
-    model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_000.png"))
-    del input_data
+        input_data = next(iter(val_data))[0].to(device)
+        model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_000.png"))
+        del input_data
 
-    best_val_accuracy = 0.0
-    best_model_epoch = -1
-    latest_model_epoch = -1
-    best_checkpoint_path = None
+        best_val_accuracy = 0.0
+        best_model_epoch = -1
+        latest_model_epoch = -1
+        best_checkpoint_path = None
 
-    for epoch in range(num_epochs):    # tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
+        start_epoch = 0
+
+    for epoch in range(start_epoch, num_epochs):    # tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
         model.train()
         running_loss = 0.0
 
@@ -251,6 +259,21 @@ def train(
             torch.save(model.state_dict(), best_checkpoint_path)
             print(f"Best model saved with Balanced Accuracy: {best_val_accuracy:.4f}")
             best_model_epoch = epoch
+
+        
+        # save train state as latest state so that we can continue here
+        save_cur_train_state(
+            output_dir=output_dir,
+            config=config,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            cur_epoch=epoch,
+            best_val_accuracy=best_val_accuracy,
+            best_model_epoch=best_model_epoch, 
+            latest_model_epoch=latest_model_epoch,
+            best_checkpoint_path=best_checkpoint_path
+        )
     
     with open(f"{output_dir}/training_summary.txt", "w") as f:
         f.write(f"Training: {exp_name}\n")
@@ -274,6 +297,12 @@ def train(
 
 def main(config):
 
+    # check if should continue training
+    continue_training = config.train.continue_training
+    last_training_output_dir = config.train.last_training_output_dir
+    if continue_training:
+        config, output_dir = get_config_and_dir_from_last_train(output_dir=last_training_output_dir)
+
     # extract configs
     model_name = config.model.name
     data_path = config.data.path
@@ -291,14 +320,15 @@ def main(config):
 
 
     # create exp output folder
-    output_dir = f"{output_dir}/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{exp_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    # shutil.rmtree(output_dir)
-    # os.makedirs(output_dir, exist_ok=True)
+    if not continue_training:
+        output_dir = f"{output_dir}/{time.strftime('%Y-%m-%d_%H-%M-%S')}_{exp_name}"
+        os.makedirs(output_dir, exist_ok=True)
+        # shutil.rmtree(output_dir)
+        # os.makedirs(output_dir, exist_ok=True)
 
 
-    # track config for this run
-    save_config(config, f"{output_dir}/config.yaml")
+        # track config for this run
+        save_config(config, f"{output_dir}/config.yaml")
 
 
     # start training
@@ -309,14 +339,15 @@ def main(config):
         batch_size=batch_size,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
-        criterion=criterion,
-        optimizer=optimizer,
-        scheduler=scheduler,
+        criterion_name=criterion,
+        optimizer_name=optimizer,
+        scheduler_name=scheduler,
         output_dir=output_dir,
         exp_name=exp_name,
         used_train_samples=used_train_samples,
         used_val_samples=used_val_samples,
-        config=config
+        config=config,
+        continue_training=continue_training
     )
 
 

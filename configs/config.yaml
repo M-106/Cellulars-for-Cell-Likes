@@ -12,9 +12,11 @@ train:
     optimizer: "Adamw"  # "Adamw", "SGD"
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "first_train_try"
+    exp_name: "experiment_run"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
+    continue_training: false
+    last_training_output_dir: "./output/2026-07-07_08-10-09_first_train_try"
 
 
 
@@ -25,7 +27,8 @@ test:
 
 model:
     name: "standard_nca"
-    check_point_path: "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
+    check_point_path: None
+    # "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
     # None 
     # "./output/2026-07-05_17-18-54_overfit/latest_model.pth"
     # "./output/2026-07-05_23-45-49_overfit/latest_model.pth"
@@ -45,7 +48,8 @@ model:
 
 
 data:
-    path: "F:/data/ISIC-2019_Skin_Lesion"
+    path: "C:/Users/Shadow/data/ISIC-2019_Skin_Lesion"
+    # "F:/data/ISIC-2019_Skin_Lesion"
     # name: "isic-2019"
 
 

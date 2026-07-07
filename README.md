@@ -30,6 +30,14 @@ Applying neural cellular automates onto skin cancer image data for classificatio
         ```bash
         conda create -n cfc python=3.14 pip -y
         conda activate cfc
+        # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+        # pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu126 --trusted-host download.pytorch.org
+        # pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118
+        pip install -e .
+        ```
+    4. Quick check:
+        ```python
+        python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
         ```
 2. Download Dataset via https://challenge.isic-archive.com/data/#2019
     - Download `Training Data` Task 1 -> 9,1 GB
@@ -42,6 +50,10 @@ Applying neural cellular automates onto skin cancer image data for classificatio
     1. Activate the env in VS Code (as current used interpreter)
     2. Open any python file + Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
 
+
+> Shadow PC PyTorch Block Workaround:
+> - comment out all 3 torch related line sin the projecttoml file
+> - Use anaconda isntallation instead ```conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia```
 
 <br><br>
 

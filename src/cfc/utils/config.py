@@ -56,6 +56,8 @@ class TrainConfig(BaseModel):
     exp_name: str
     used_train_samples: int
     used_val_samples: int
+    continue_training: bool
+    last_training_output_dir: str
 
 
 
