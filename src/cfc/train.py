@@ -65,16 +65,19 @@ def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoc
     weights = []
     loss = 0.0
     plots = 0
+    saved_transition = False
 
     with torch.no_grad():
-        for imgs, labels, _, validation_weights in data_loader:
+        for imgs, labels, _, validation_weights in tqdm(data_loader, total=len(data_loader), desc="Validation Run"):
             imgs = imgs.to(device)
             labels = labels.to(device)
 
-            l2_stability = measure_nca_stability(model, imgs[0:1])
-            tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
+            if saved_transition is False:
+                l2_stability = measure_nca_stability(model, imgs[0:1])
+                tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
 
-            model.save_transition_sequence(x=imgs, save_path=os.path.join(output_dir, f"nca_transition_epoch_{cur_epoch:03}.png"))
+                model.save_transition_sequence(x=imgs, save_path=os.path.join(output_dir, f"nca_transition_epoch_{cur_epoch:03}.png"))
+                saved_transition = True
 
             outputs = model(imgs)
             loss += criterion(outputs, labels).mean().item()  # mean to avoid gradient explosion
@@ -208,7 +211,7 @@ def train(
         log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
 
         input_data = next(iter(val_data))[0].to(device)
-        model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_000.png"))
+        model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_-1.png"))
         del input_data
 
         best_val_accuracy = 0.0
