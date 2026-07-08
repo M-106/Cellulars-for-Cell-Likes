@@ -122,6 +122,7 @@ def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoc
 
 def train(
         model_name, 
+        model_kwargs,
         data_path, 
         num_epochs, 
         batch_size, 
@@ -177,7 +178,7 @@ def train(
     )
 
     # get model
-    model = get_model(model_name, num_classes=len(train_data.dataset.class_names))
+    model = get_model(model_name, num_classes=len(train_data.dataset.class_names), **model_kwargs)
     model.to(device)
     
     optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
@@ -305,6 +306,7 @@ def main(config):
 
     # extract configs
     model_name = config.model.name
+    model_kwargs = config.model.kwargs
     data_path = config.data.path
     num_epochs = config.train.num_epochs
     batch_size = config.train.batch_size
@@ -336,6 +338,7 @@ def main(config):
     # start training
     train(
         model_name=model_name,
+        model_kwargs=model_kwargs,
         data_path=data_path,
         num_epochs=num_epochs,
         batch_size=batch_size,

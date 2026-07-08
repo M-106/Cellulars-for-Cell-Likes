@@ -56,6 +56,7 @@ def load_train_state(output_dir, model, optimizer, scheduler):
     latest_train_state_2_file_path = os.path.join(output_dir, "last_train_state_2.pth")
 
     for cur_path in [latest_train_state_file_path, latest_train_state_2_file_path]:
+        errors = []
         try:
             if not os.path.exists(cur_path):
                 raise ValueError(f"Cannot find following path/file: {cur_path}")
@@ -74,9 +75,9 @@ def load_train_state(output_dir, model, optimizer, scheduler):
             print(f"Checkpoint loaded. Starting at epoch {start_epoch}")
             return start_epoch, best_val_accuracy, best_model_epoch, latest_model_epoch, best_checkpoint_path
         except Exception as e:
-            pass
+            errors.append(e)
 
-    raise RuntimeError(f"Could not find/load any of the 2 train states ('{latest_train_state_file_path}', '{latest_train_state_2_file_path}').\n And following error occured: {e}")
+    raise RuntimeError(f"Could not find/load any of the 2 train states ('{latest_train_state_file_path}', '{latest_train_state_2_file_path}').\n And following error occured: {errors[0]}")
 
 
 
@@ -86,15 +87,35 @@ def get_config_and_dir_from_last_train(output_dir):
 
     for cur_path in [latest_train_state_file_path, latest_train_state_2_file_path]:
         try:
+            already_finish = False
+            
             if not os.path.exists(cur_path):
                 raise ValueError(f"Cannot find following path/file: {cur_path}")
             checkpoint = torch.load(cur_path, map_location='cpu')
+
+            # add check, if training is already finish! Should not then
+            already_finish = check_if_training_is_already_finish(checkpoint)
+            if already_finish:
+                raise RuntimeError("Training is already completed.")
+
             return checkpoint['config'], checkpoint['output_dir']
         except Exception as e:
-            pass
+            if already_finish:
+                raise e
+
     
     raise RuntimeError(f"Could not find/load any of the 2 train states ('{latest_train_state_file_path}', '{latest_train_state_2_file_path}').\n And following error occured: {e}")
 
+
+
+def check_if_training_is_already_finish(checkpoint):
+    start_epoch = checkpoint['epoch'] + 1
+    max_epochs = checkpoint['config'].train.num_epochs
+
+    if start_epoch > max_epochs-1:
+        return True
+    else:
+        return False
 
 
 

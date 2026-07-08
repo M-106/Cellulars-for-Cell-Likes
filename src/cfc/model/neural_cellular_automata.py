@@ -2,6 +2,7 @@
 # > Imports <
 # -----------
 import os
+import math
 
 import torch
 import torch.nn as nn
@@ -318,14 +319,20 @@ class NeuralCellularAutomata(torch.nn.Module):
         pca_images = torch.from_numpy(pca_images)
         pca_images = (pca_images - pca_images.min()) / (pca_images.max() - pca_images.min())
 
-        # make a grid from the images
-        grid_img = vutils.make_grid(pca_images, nrow=len(pca_images), padding=2, normalize=False)
+        num_images = len(pca_images)
+        cols = int(math.ceil(math.sqrt(num_images)))
+        rows = int(math.ceil(num_images / cols))
 
-        plt.figure(figsize=(5*self.steps, 5))
+        # make a grid from the images
+        grid_img = vutils.make_grid(pca_images, nrow=cols, padding=2, normalize=False)
+
+        
+        plt.figure(figsize=(5*cols, 5*rows))
         plt.imshow(grid_img.permute(1, 2, 0))
         plt.axis("off")
         plt.title(f"NCA Transition Sequence (Steps: {self.steps})")
-        plt.savefig(save_path)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300)
         plt.close()
 
 
