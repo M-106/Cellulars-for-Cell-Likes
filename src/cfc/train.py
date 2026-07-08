@@ -329,6 +329,8 @@ def main(config):
 
         # track config for this run
         save_config(config, f"{output_dir}/config.yaml")
+    else:
+        output_dir = last_training_output_dir
 
 
     # start training

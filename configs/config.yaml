@@ -15,8 +15,10 @@ train:
     exp_name: "experiment_run"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
-    continue_training: false
-    last_training_output_dir: "./output/2026-07-07_08-10-09_first_train_try"
+    continue_training: True
+    last_training_output_dir: "./output/2026-07-07_17-31-57_experiment_run"
+
+    # 2026-07-07_17-31-57_experiment_run
 
 
 
