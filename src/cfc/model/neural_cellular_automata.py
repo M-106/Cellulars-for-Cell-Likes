@@ -9,7 +9,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.utils as vutils
 
-import matplotlib.pyplot as plt
+# matplotlib background mode without tkinter, default is TkAgg
+# Agg = Anti-Grain Geometry: A purely file-based backend
+# import matplotlib
+# matplotlib.use('Agg')
+# import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
 from cfc.model.utils import init_weights
@@ -326,14 +330,16 @@ class NeuralCellularAutomata(torch.nn.Module):
         # make a grid from the images
         grid_img = vutils.make_grid(pca_images, nrow=cols, padding=2, normalize=False)
 
+        vutils.save_image(grid_img, save_path)
+
         
-        plt.figure(figsize=(5*cols, 5*rows))
-        plt.imshow(grid_img.permute(1, 2, 0))
-        plt.axis("off")
-        plt.title(f"NCA Transition Sequence (Steps: {self.steps})")
-        plt.tight_layout()
-        plt.savefig(save_path, dpi=300)
-        plt.close()
+        # plt.figure(figsize=(5*cols, 5*rows))
+        # plt.imshow(grid_img.permute(1, 2, 0))
+        # plt.axis("off")
+        # plt.title(f"NCA Transition Sequence (Steps: {self.steps})")
+        # plt.tight_layout()
+        # plt.savefig(save_path, dpi=300)
+        # plt.close()
 
 
 

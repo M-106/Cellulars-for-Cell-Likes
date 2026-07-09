@@ -6,6 +6,10 @@ import os
 import shutil
 
 import torch
+# matplotlib background mode without tkinter, default is TkAgg
+# Agg = Anti-Grain Geometry: A purely file-based backend
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from tqdm import tqdm
