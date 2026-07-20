@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.utils as vutils
+from torchvision.models import resnet50, ResNet50_Weights
 
 # matplotlib background mode without tkinter, default is TkAgg
 # Agg = Anti-Grain Geometry: A purely file-based backend
@@ -29,8 +30,8 @@ def measure_nca_stability(model, input_img):
     reaches its goal state. 
     """
     model.eval()
-    prev_dropout = model.dropout
-    model.dropout = 0.0
+    # prev_dropout = model.dropout
+    # model.dropout = 0.0
     with torch.no_grad():
         x = model.input_projection_net(input_img)
 
@@ -42,7 +43,7 @@ def measure_nca_stability(model, input_img):
             change = torch.norm(x - x_prev, p=2) / x.numel()
             total_change += change.item()
 
-    model.dropout = prev_dropout
+    # model.dropout = prev_dropout
 
     return total_change / model.steps
 
@@ -110,12 +111,46 @@ class Perception(nn.Module):
             ) 
             self.size = 3
         elif self.filter.lower() == "laplacian":
-            self.kernel = torch.tensor([
-                [-1.0, -1.0, -1.0],
-                [-1.0,  8.0, -1.0],
-                [-1.0, -1.0, -1.0]
-            ]).view(1, 1, 3, 3).repeat(channels, 1, 1, 1)
+            # self.register_buffer(
+            # self.kernel = torch.tensor([
+            self.register_buffer(
+                "kernel", torch.Tensor([
+                    [-1.0, -1.0, -1.0],
+                    [-1.0,  8.0, -1.0],
+                    [-1.0, -1.0, -1.0]
+                ]).view(1, 1, 3, 3).repeat(channels, 1, 1, 1)
+            )
             self.size = 2
+        elif self.filter.lower() == "learnable":
+            self.conv1 = torch.nn.Conv2d(in_channels=channels, out_channels=channels, kernel_size=3, stride=1, padding="same")
+            self.size = 1
+        elif self.filter.lower() == "pretrained":
+            resnet = resnet50(weights=ResNet50_Weights.DEFAULT)
+            pretrained_layer = resnet.conv1
+            
+            self.features = torch.nn.Conv2d(
+                in_channels=channels,
+                out_channels=channels,
+                stride=1,
+                padding="same",
+                bias=False
+            )
+
+            with torch.no_grad():
+                weight_repeat = (channels//3) + 1
+                expanded_weight = pretrained_layer.weight.repeat(1, weight_repeat, 1, 1)[:, :channels, :, :]
+                # ResNet has 64 Out-Channels -> repeat until fitting to our needed size
+                if channels <= 64:
+                    self.features.weight.copy_(expanded_weight[:channels])
+                else:
+                    out_repeat = (channels // 64) + 1
+                    self.features.weight.copy_(expanded_weight.repeat(out_repeat, 1, 1, 1)[:channels])
+            
+            # # freeze pretrained weights?
+            # for param in self.features.parameters():
+            #     param.requires_grad = False
+
+            self.size = 1
         else:
             raise ValueError(f"Unknown Filter passed: '{self.filter}'.") 
 
@@ -129,6 +164,10 @@ class Perception(nn.Module):
         elif self.filter.lower() == "laplacian":
             laplacian = F.conv2d(x, self.kernel.to(x.device), padding=1, groups=x.shape[1])
             return torch.cat([x, laplacian], dim=1)
+        elif self.filter.lower() == "learnable":
+            return self.conv1(x)
+        elif self.filter.lower() == "pretrained":
+            return self.features(x)
         else:
             raise ValueError(f"Unknown Filter passed: '{self.filter}'.") 
 
@@ -248,6 +287,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.classification_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),  # global average pooling -> (B, C, H, W) -> (B, C, 1, 1)
             nn.Flatten(),  # flatten to (B, C)
+            nn.Dropout(p=dropout, inplace=False),
             nn.Linear(hidden_channels, num_classes)
         )
 
@@ -264,8 +304,11 @@ class NeuralCellularAutomata(torch.nn.Module):
     
         # stochastic mask -> vor better generalization ability
         #    -> update dropout
-        mask = torch.rand(x.shape[0], 1, x.shape[2], x.shape[3]) > self.dropout
-        return x + update * mask.to(x.device)
+        # if masking:
+        #     mask = torch.rand(x.shape[0], 1, x.shape[2], x.shape[3]) > self.dropout
+        #     return x + update * mask.to(x.device)
+        # else:
+        return x + update
     
 
     def get_last_state(self, x):
