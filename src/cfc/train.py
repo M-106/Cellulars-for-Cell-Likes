@@ -11,7 +11,10 @@ import torch
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
 from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
+
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
@@ -31,7 +34,7 @@ from cfc.utils.stepwise_train import save_cur_train_state, load_train_state, get
 # ----------
 # > Helper <
 # ----------
-def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_label, class_label_name, save_path=None):
+def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_label, class_label_name, save_path=None, cur_epoch=0, tensorboard_writer=None):
     """
     Plot sample images for classication with NCA
     """
@@ -55,6 +58,8 @@ def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_l
     else:
         plt.show()
 
+    if tensorboard_writer:
+        tensorboard_writer.add_figure("SamplePlot", fig, global_step=cur_epoch)
     plt.close(fig)
 
 
@@ -62,11 +67,11 @@ def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_l
 # --------------
 # > Train Loop <
 # --------------
-def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoch, output_dir=None):
+def validate(model, model_name, criterion, data_loader, device, tensorboard_writer, cur_epoch, output_dir=None, vae_is_latent_training=True, vae_using_nca=False):
     model.eval()
-    all_predictions = []
-    all_labels = []
-    weights = []
+    is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"] 
+    all_predictions, all_labels, weights = [], [], []
+    latent_vectors, latent_labels = [], []
     loss = 0.0
     plots = 0
     saved_transition = False
@@ -74,56 +79,132 @@ def validate(model, criterion, data_loader, device, tensorboard_writer, cur_epoc
     with torch.no_grad():
         for imgs, labels, _, validation_weights in tqdm(data_loader, total=len(data_loader), desc="Validation Run"):
             imgs = imgs.to(device)
-            labels = labels.to(device)
+            if not is_autoencoder:
+                labels = labels.to(device)
+            else:
+                labels_ = labels
+                labels = imgs
 
-            if saved_transition is False:
+            # NCA Transition Plot & Step Stability
+            if saved_transition is False and (not is_autoencoder or vae_using_nca):
                 l2_stability = measure_nca_stability(model, imgs[0:1])
                 tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
 
-                model.save_transition_sequence(x=imgs, save_path=os.path.join(output_dir, f"nca_transition_epoch_{cur_epoch:03}.png"))
-                saved_transition = True
+                if hasattr(model, "save_transition_sequence"):
+                    model.save_transition_sequence(x=imgs, save_path=os.path.join(output_dir, f"nca_transition_epoch_{cur_epoch:03}.png"))
+                    saved_transition = True
 
+            # forwarding & calc loss
             outputs = model(imgs)
             loss += criterion(outputs, labels).mean().item()  # mean to avoid gradient explosion
 
+            # Sample Plotting
             if plots < 5:  # only plot a few samples
-                last_state = model.get_last_state(imgs[0:1])  # [1, C, H, W]
-                pred_grid = last_state[0].detach().cpu().permute(1, 2, 0).numpy()
-                H, W, C = pred_grid.shape
-                # pred_img = pred_grid[:, :, :3]
-                pca = PCA(n_components=3)
-                pca_data = pca.fit_transform(pred_grid.reshape(H * W, C))
-                pred_img = pca_data.reshape(H, W, 3)
-                # min-max normalization, to [0, 1]
-                pred_img = (pred_img - pred_img.min()) / \
-                           (pred_img.max() - pred_img.min()) 
+                if is_autoencoder:
+                    reconstructed_img = outputs[0][0].detach().cpu().permute(1, 2, 0).numpy()
+                    reconstructed_img = (reconstructed_img - reconstructed_img.min()) / (reconstructed_img.max() - reconstructed_img.min() + 1e-8) 
+                    origin_img = imgs[0].detach().cpu().permute(1, 2, 0).numpy()
+                    origin_img = (origin_img - origin_img.min()) / (origin_img.max() - origin_img.min() + 1e-8) 
 
-                pred_label = torch.argmax(outputs[0], dim=0).item()
-                gt_label = labels[0].item()  # labels[0].detach().cpu().numpy()
+                    fig, ax = plt.subplots(1, 2, figsize=(8, 4))
+                    ax[0].imshow(origin_img)
+                    ax[0].set_title("Input Original")
+                    ax[0].axis("off")
+                    ax[1].imshow(reconstructed_img)
+                    ax[1].set_title("AutoEncoder Reconstruction")
+                    ax[1].axis("off")
 
-                save_path = f"{output_dir}/sample_plot_{cur_epoch}_{plots}.png" if output_dir else None
-                plot_sample_images(
-                    input_img=imgs[0].detach().cpu().permute(1, 2, 0).numpy(),
-                    pred_img=pred_img,
-                    class_pred=pred_label,
-                    class_pred_name=data_loader.dataset.idx_to_class[pred_label],
-                    class_label=gt_label,  
-                    class_label_name=data_loader.dataset.idx_to_class[gt_label],
-                    save_path=save_path
-                )
+                    save_path = f"{output_dir}/sample_plot_{cur_epoch:03}_{plots}.png" if output_dir else None
+                    if save_path:
+                        plt.savefig(save_path)
+
+                    tensorboard_writer.add_figure("SamplePlot", fig, global_step=cur_epoch)
+                    plt.close(fig)
+
+                # NCA Sample Plot
+                else:
+                    last_state = model.get_last_state(imgs[0:1])  # [1, C, H, W]
+                    pred_grid = last_state[0].detach().cpu().permute(1, 2, 0).numpy()
+                    H, W, C = pred_grid.shape
+                    # pred_img = pred_grid[:, :, :3]
+                    pca = PCA(n_components=3)
+                    pca_data = pca.fit_transform(pred_grid.reshape(H * W, C))
+                    pred_img = pca_data.reshape(H, W, 3)
+                    # min-max normalization, to [0, 1]
+                    pred_img = (pred_img - pred_img.min()) / \
+                               (pred_img.max() - pred_img.min()) 
+
+                    pred_label = torch.argmax(outputs[0], dim=0).item()
+                    gt_label = labels[0].item()  # labels[0].detach().cpu().numpy()
+
+                    save_path = f"{output_dir}/sample_plot_{cur_epoch:03}_{plots}.png" if output_dir else None
+                    plot_sample_images(
+                        input_img=imgs[0].detach().cpu().permute(1, 2, 0).numpy(),
+                        pred_img=pred_img,
+                        class_pred=pred_label,
+                        class_pred_name=data_loader.dataset.idx_to_class[pred_label],
+                        class_label=gt_label,  
+                        class_label_name=data_loader.dataset.idx_to_class[gt_label],
+                        save_path=save_path,
+                        cur_epoch=cur_epoch,
+                        tensorboard_writer=tensorboard_writer
+                    )
+
                 plots += 1  
 
-            _, preds = torch.max(outputs, 1)
 
-            all_predictions.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-            weights.extend(validation_weights.cpu().numpy())
+            if is_autoencoder:
+                outputs_ = model(imgs, classify=True)
+                _, preds = torch.max(outputs_, 1)
+                all_predictions.extend(preds.cpu().numpy())
+                all_labels.extend(labels_.cpu().numpy())
+                weights.extend(validation_weights.cpu().numpy())
+
+                if vae_is_latent_training:
+                    latent_vectors.append(outputs[1].cpu())
+                    latent_labels.append(labels_.cpu())  # FIXME -> get from model
+            else:
+                _, preds = torch.max(outputs, 1)
+                all_predictions.extend(preds.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+                weights.extend(validation_weights.cpu().numpy())
+
 
     # calc metrics
     used_label_names = get_used_label_names(all_labels, all_predictions, idx_to_class=data_loader.dataset.idx_to_class)
     metrics = calculate_isic_metrics(all_labels, all_predictions, used_label_names, None)  # , sample_weights=weights -> we have another validation split!
     print(f"Weighted Balanced Val Accuracy: {metrics['balanced_accuracy']:.4f}")
+
+    # Silhoutte Score + PCA Scatter Plot
+    if is_autoencoder and vae_is_latent_training:
+        if len(latent_vectors) > 0:
+            # Latent Space Cluster Analysis (PCA + Silhoutte Score)
+            X_latent = torch.cat(latent_vectors, dim=0).numpy()
+            y_labels = torch.cat(latent_labels, dim=0).numpy()
+
+            # Compute Silhoutte Score
+            if len(set(y_labels)) > 1:
+                silhouette_score_ = silhouette_score(X_latent, y_labels)
+                tensorboard_writer.add_scalar("Latent/Silhoutte_Score", silhouette_score_, cur_epoch)
+                print(f"Latent Space Silhoutte Score: {silhouette_score_:.4f}")
+
+            # PCA Scatter Plot from Latent Space
+            pca_2d = PCA(n_components=2).fit_transform(X_latent)
+            fig, ax = plt.subplots(figsize=(8, 6))
+            scatter = ax.scatter(pca_2d[:, 0], pca_2d[:, 1], c=y_labels, cmap='tab10', alpha=0.6, s=15)
+            plt.colorbar(scatter, ax=ax, label="Class Labels")
+            ax.set_title(f"Latent Space PCA (Epoch {cur_epoch})")
+
+            save_path = f"{output_dir}/latent_space_pca_{cur_epoch:03}_{plots}.png" if output_dir else None
+            if save_path:
+                plt.savefig(save_path)
+
+            tensorboard_writer.add_figure("LatentSpace/PCA_Scatter", fig, global_step=cur_epoch)
+            plt.close(fig)
+
+
     return metrics, loss / len(data_loader)
+
 
 
 
@@ -185,6 +266,9 @@ def train(
     )
 
     # get model
+    is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"]
+    vae_is_latent_training = model_kwargs["vae_is_latent_training"]
+    vae_using_nca = model_kwargs["vae_using_nca"]
     model = get_model(model_name, num_classes=len(train_data.dataset.class_names), **model_kwargs)
     model.to(device)
     
@@ -214,15 +298,16 @@ def train(
 
         log_config_to_tensorboard(writer=tensorboard_writer, tag="Config/Experiment", config=config)
 
-        input_data = next(iter(val_data))[0].to(device)
-        model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_-1.png"))
-        del input_data
+        # if not is_autoencoder:
+        if hasattr(model, "save_transition_sequence"):
+            input_data = next(iter(val_data))[0].to(device)
+            model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_-1.png"))
+            del input_data
 
-        best_val_accuracy = 0.0
+        best_val_accuracy = 0.0 if not is_autoencoder else float('inf')
         best_model_epoch = -1
         latest_model_epoch = -1
         best_checkpoint_path = None
-
         start_epoch = 0
 
     for epoch in range(start_epoch, num_epochs):    # tqdm(range(num_epochs), total=num_epochs, desc="Training Progress"):
@@ -231,7 +316,10 @@ def train(
 
         for imgs, labels, _, _ in tqdm(train_data, total=len(train_data), desc=f"NCA Training Epoch {epoch:03}"):
             imgs = imgs.to(device)
-            labels = labels.to(device)
+            if not is_autoencoder:
+                labels = labels.to(device)
+            else:
+                labels = imgs
 
             optimizer.zero_grad()
             outputs = model(imgs)
@@ -251,7 +339,7 @@ def train(
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
 
         # Validate after each epoch
-        metrics, val_loss = validate(model, criterion, val_data, device, tensorboard_writer, cur_epoch=epoch, output_dir=output_dir)
+        metrics, val_loss = validate(model, model_name, criterion, val_data, device, tensorboard_writer, cur_epoch=epoch, output_dir=output_dir, vae_is_latent_training=vae_is_latent_training, vae_using_nca=vae_using_nca)
         tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
         tensorboard_writer.add_scalar("Balanced_Accuracy/Validation", metrics['balanced_accuracy'], epoch)
 
@@ -261,11 +349,20 @@ def train(
         torch.save(model.state_dict(), checkpoint_path)
         latest_model_epoch = epoch
 
-        if best_val_accuracy < metrics['balanced_accuracy']:
-            best_val_accuracy = metrics['balanced_accuracy']
+        if not is_autoencoder or not vae_is_latent_training:
+            cur_score = metrics['balanced_accuracy']
+            cur_score_name = "Balanced Accuracy"
+            cur_is_better = best_val_accuracy < cur_score
+        else:
+            cur_score = val_loss
+            cur_score_name = "VAE-Loss"
+            cur_is_better = best_val_accuracy > cur_score
+
+        if cur_is_better:
+            best_val_accuracy = cur_score
             best_checkpoint_path = f"{output_dir}/best_model.pth"
             torch.save(model.state_dict(), best_checkpoint_path)
-            print(f"Best model saved with Balanced Accuracy: {best_val_accuracy:.4f}")
+            print(f"Best model saved with {cur_score_name}: {best_val_accuracy:.4f}")
             best_model_epoch = epoch
 
         

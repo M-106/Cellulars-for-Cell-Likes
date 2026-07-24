@@ -30,6 +30,11 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
     if model_name.lower() == "standard_nca":
         from cfc.model.neural_cellular_automata import NeuralCellularAutomata
         model = NeuralCellularAutomata(input_channels=3, num_classes=num_classes, **kwargs)
+
+    elif model_name.lower() == "convvae":
+        from cfc.model.autoencoder import ConvVAE
+        model = ConvVAE(num_classes=num_classes, input_width=600, input_height=450, **kwargs)
+
     else:
         raise ValueError(f"Model {model_name} not supported.")
 

@@ -228,7 +228,8 @@ class NeuralCellularAutomata(torch.nn.Module):
                  final_update_block_activation_kernel_size=1,
                  final_update_block_activation="sigmoid",
                  perception_filter="sobel",
-                 dropout=0.1):
+                 dropout=0.1,
+                 **kwargs):
         super().__init__()
 
         if update_blocks < 1:

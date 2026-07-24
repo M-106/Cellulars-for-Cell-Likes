@@ -25,6 +25,29 @@ class FocalLoss(nn.Module):
 
 
 # ---------------------
+# > Define VAE Loss <
+# ---------------------
+class VAELoss(nn.Module):
+    def __init__(self, beta=1.0):
+        super().__init__()
+        self.beta = beta
+
+    def forward(self, inputs, targets):
+        reconstructed_x, mu, logvar = inputs
+        return self.loss_(reconstructed_x, targets, mu, logvar)
+
+    def loss_(self, reconstructed_x, x, mu, logvar):
+        # comparison to the original image
+        reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction='sum')
+    
+        # kl-divergence -> force latent space to follow standard-normal-distribution
+        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+        return reconstruction_loss + (self.beta * kl_loss)
+
+
+
+# ---------------------
 # > Criterion Loading <
 # ---------------------
 def get_criterion(criterion_name, class_weights=None):
@@ -46,6 +69,9 @@ def get_criterion(criterion_name, class_weights=None):
     # Focal Loss ist der Goldstandard bei starkem Ungleichgewicht
     elif criterion_name.lower() == "focal_loss":
         return FocalLoss(gamma=2.0, alpha=class_weights)
+
+    elif criterion_name.lower() == "vae_loss":
+        return VAELoss(beta=1.0)
     
     else:
         raise ValueError(f"Criterion {criterion_name} not supported.")

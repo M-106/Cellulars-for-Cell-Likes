@@ -7,6 +7,14 @@ NCA for Skin Cancer Classification and Segmentation. Cellular logic on cell-like
 
 > **NCAs on ISIC 2019 Image Only Lesion Diagnosis**
 
+<br><br>
+
+- [Core Idea](#core-idea)
+- [Installation](#installation)
+- [Experiment Plan](#experimentplan)
+- [Experiments & Results](#experiments--results)
+- [Sources](#sources)
+
 
 <br><br>
 
@@ -54,6 +62,22 @@ Applying neural cellular automates onto skin cancer image data for classificatio
 > Shadow PC PyTorch Block Workaround:
 > - comment out all 3 torch related line sin the projecttoml file
 > - Use anaconda isntallation instead ```conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia```
+
+<br><br>
+
+---
+### Experimentplan
+
+- Few-Sample-Overfitting
+- "Standard" Training
+- Vary Hidden Channel Amount
+- Vary Steps
+- Vary with Perception (sobel, trained, pretrained)
+- AlexNet Inspired Net
+- AlexNet Inspired + NCA (on Feature Space / in Clssification Head)
+- AutoEncoder + NCA
+
+> Researchquestion: Does it make sense to use NCAs applying on Feature Space or is it more effective to use them directly or on latent space.
 
 <br><br>
 
@@ -171,59 +195,6 @@ Maybe in that way the NCA looks at the shape and symmetry for channel 5 (classif
 
 
 
-
-<br><br>
-
----
-### Code
-
-- [M3D-NCA](https://github.com/MECLabTUDA/M3D-NCA)
-
-Or by your self (tempalte code from Gemini):
-
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-class MedicalNCA(nn.Module):
-    def __init__(self, channels=16, hidden_channels=32):
-        super().__init__()
-        self.channels = channels
-        
-        # 1. Perception: Jedes Pixel "sieht" seine Nachbarn über Sobel-Filter (Stichwort: lokale Ableitung)
-        # In der Praxis nutzt man oft einfach eine Depthwise-Convolution
-        self.perceive = nn.Conv2d(channels, channels * 3, kernel_size=3, padding=1, groups=channels, bias=False)
-        
-        # 2. Update-Regel (Das eigentliche Gehirn der Zelle als 1x1 Convolutions / MLP)
-        self.update_net = nn.Sequential(
-            nn.Conv2d(channels * 3, hidden_channels, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(hidden_channels, channels, kernel_size=1, bias=False)
-        )
-        
-        # Gewichte gegen Null initialisieren, damit das Wachstum stabil startet
-        nn.init.zeros_(self.update_net[-1].weight)
-
-    def forward(self, x, steps=32, fire_rate=0.5):
-        for _ in range(steps):
-            # Lokale Wahrnehmung der Nachbarpixel
-            perception = self.perceive(x)
-            
-            # Update berechnen
-            ds = self.update_net(perception)
-            
-            # Stochastisches Update (Zellen updaten sich biologisch-zufällig, nicht alle synchron)
-            rand_mask = (torch.rand(x.size(0), 1, x.size(2), x.size(3), device=x.device) < fire_rate).float()
-            
-            # Zustand des Gitters aktualisieren
-            x = x + ds * rand_mask
-            
-        return x
-```
-
-
-> See your costum train pipeline in MCR-Lab as good starting point for the pipeline.
 
 
 
