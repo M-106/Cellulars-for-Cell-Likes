@@ -131,6 +131,7 @@ class Perception(nn.Module):
             self.features = torch.nn.Conv2d(
                 in_channels=channels,
                 out_channels=channels,
+                kernel_size=7,
                 stride=1,
                 padding="same",
                 bias=False
@@ -138,7 +139,9 @@ class Perception(nn.Module):
 
             with torch.no_grad():
                 weight_repeat = (channels//3) + 1
+                # 6
                 expanded_weight = pretrained_layer.weight.repeat(1, weight_repeat, 1, 1)[:, :channels, :, :]
+                # torch.Size([64, 16, 7, 7])
                 # ResNet has 64 Out-Channels -> repeat until fitting to our needed size
                 if channels <= 64:
                     self.features.weight.copy_(expanded_weight[:channels])

@@ -66,13 +66,16 @@ Checking the results do:
 1. Open Anaconda Prompt
 2. Start env and tensorboard
     ```bash
-    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-08_22-07-08_experiment_run\logs"
+    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-22_09-21-39_experiment_run_fixed\logs"
     ```
 
 <!--
 "F:\Studium\Master\3.Semester\Teamwork\Cellulars-for-Cell-Likes\output\2026-07-05_14-33-30_overfit\logs"
 "C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-08_22-07-08_experiment_run\logs"
 "C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-11_18-10-08_experiment_run\logs"
+"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-20_19-07-14_experiment_run_fixed\logs"
+"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-21_13-31-48_experiment_run_fixed\logs"
+"2026-07-23_16-09-31_experiment_run_fixed"
 -->
 
 <br>

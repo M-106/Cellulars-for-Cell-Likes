@@ -15,8 +15,8 @@ train:
     exp_name: "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
-    continue_training: False
-    last_training_output_dir: "./output/2026-07-20_07-32-15_experiment_run"
+    continue_training: True
+    last_training_output_dir: "./output/2026-07-24_10-57-30_experiment_run_fixed"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -24,6 +24,11 @@ train:
     # 2026-07-16_09-58-27_experiment_run
     # 2026-07-17_23-44-21_experiment_run
     # 2026-07-18_22-24-42_experiment_run
+    # 2026-07-20_19-07-14_experiment_run_fixed
+    # 2026-07-21_13-31-48_experiment_run_fixed
+    # 2026-07-22_09-21-39_experiment_run_fixed
+    # 2026-07-23_00-55-50_experiment_run_fixed
+    # 2026-07-23_16-09-31_experiment_run_fixed
 
 
 
@@ -46,9 +51,9 @@ model:
         update_blocks_activation_kernel_size_2: 1 
         update_blocks_activation: "relu"                # "relu", "leaky_relu"
         final_update_block_activation_kernel_size: 1    # 1
-        final_update_block_activation: "sigmoid"        # "sigmoid", "tanh", "leaky_relu"
-        perception_filter: "sobel"                      # "sobel", "laplacian"
-        dropout: 0.2                                    # 0.0, 0.1, 0.2, 0.3
+        final_update_block_activation: "leaky_relu"        # "sigmoid", "tanh", "leaky_relu"
+        perception_filter: "learnable"                      # "sobel", "laplacian", "learnable", "pretrained"
+        dropout: 0.5                                    # 0.0, 0.1, 0.2, 0.3
 
 
 
