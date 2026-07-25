@@ -229,6 +229,7 @@ class NeuralCellularAutomata(torch.nn.Module):
                  final_update_block_activation="sigmoid",
                  perception_filter="sobel",
                  dropout=0.1,
+                 classification_mode=True,
                  **kwargs):
         super().__init__()
 
@@ -240,6 +241,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.num_classes = num_classes
         self.steps = steps
         self.dropout = dropout
+        self.classification_mode = classification_mode
 
         # Perception -> already give every cell the information of their enviornment, via additional channels
         self.perception = Perception(hidden_channels, filter=perception_filter)
@@ -331,15 +333,21 @@ class NeuralCellularAutomata(torch.nn.Module):
 
     def forward(self, x):
         # project input image to hidden state
+        # if self.classification_mode:
         x = self.input_projection_net(x)
+        # else:
+        #     x = x.view(-1, self.hidden_channels, 1, 1)
 
         # iterative updates of the hidden state
         for _ in range(self.steps):
             x = self.step(x)
 
-        # classify the final hidden state
-        logits = self.classification_head(x)
-        return logits
+        if self.classification_mode:
+            # classify the final hidden state
+            logits = self.classification_head(x)
+            return logits
+        else:
+           return x
 
 
     def save_transition_sequence(self, x, save_path):

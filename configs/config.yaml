@@ -9,14 +9,17 @@ train:
     learning_rate: 0.001
     weight_decay: 0.0001
     criterion: "vae_loss"  # "cross_entropy", "focal_loss", "vae_loss"
+    vae_criterion_beta: 1.0
+    vae_criterion_use_smooth_beta: True
+    vae_criterion_use_smooth_beta_start_value: 0.2
     optimizer: "Adamw"  # "Adamw", "SGD"
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "VAE" #  "experiment_run_fixed"
+    exp_name: "VAE_reduced_convs_error_abg_beta_smoothing" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
     continue_training: False
-    last_training_output_dir: "./output/2026-07-24_10-57-30_experiment_run_fixed"
+    last_training_output_dir: "./output/2026-07-25_01-56-43_VAE"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -29,6 +32,7 @@ train:
     # 2026-07-22_09-21-39_experiment_run_fixed
     # 2026-07-23_00-55-50_experiment_run_fixed
     # 2026-07-23_16-09-31_experiment_run_fixed
+    # 2026-07-25_01-56-43_VAE
 
 
 

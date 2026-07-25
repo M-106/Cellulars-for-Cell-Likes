@@ -13,7 +13,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score
 
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -28,39 +27,7 @@ from cfc.utils.criterion import get_criterion
 from cfc.utils.config import log_config_to_tensorboard, config_as_str
 from cfc.model.neural_cellular_automata import measure_nca_stability
 from cfc.utils.stepwise_train import save_cur_train_state, load_train_state, get_config_and_dir_from_last_train
-
-
-
-# ----------
-# > Helper <
-# ----------
-def plot_sample_images(input_img, pred_img, class_pred, class_pred_name, class_label, class_label_name, save_path=None, cur_epoch=0, tensorboard_writer=None):
-    """
-    Plot sample images for classication with NCA
-    """
-    plt.style.use('ggplot')
-    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-
-    input_img = (input_img - input_img.min()) / (input_img.max() - input_img.min())
-    ax[0].imshow(input_img)
-    ax[0].set_title("Input Image")
-    ax[0].text(0.5, -0.1, f"Class: {class_label} (Label: {class_label_name})", ha='center', va='top', fontsize=10, transform=ax[0].transAxes)
-    ax[0].axis("off")
-
-    ax[1].imshow(pred_img)
-    ax[1].set_title("Predicted Image")
-    ax[1].text(0.5, -0.1, f"Class: {class_pred} (Label: {class_pred_name})", ha='center', va='top', fontsize=10, transform=ax[1].transAxes)
-    ax[1].axis("off")
-
-    # plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path)
-    else:
-        plt.show()
-
-    if tensorboard_writer:
-        tensorboard_writer.add_figure("SamplePlot", fig, global_step=cur_epoch)
-    plt.close(fig)
+from cfc.utils.train_utils import plot_sample_images, check_active_dimensions, latent_cluster_analysis
 
 
 
@@ -75,6 +42,11 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
     loss = 0.0
     plots = 0
     saved_transition = False
+
+    # AutoEncoder Check Active Latent Dimensions
+    if is_autoencoder and vae_is_latent_training:
+        active_dims = check_active_dimensions(model, data_loader, device, threshold=0.01)
+        tensorboard_writer.add_scalar("ActiveLatentDims", active_dims, cur_epoch)
 
     with torch.no_grad():
         for imgs, labels, _, validation_weights in tqdm(data_loader, total=len(data_loader), desc="Validation Run"):
@@ -156,18 +128,18 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
             if is_autoencoder:
                 outputs_ = model(imgs, classify=True)
                 _, preds = torch.max(outputs_, 1)
-                all_predictions.extend(preds.cpu().numpy())
-                all_labels.extend(labels_.cpu().numpy())
-                weights.extend(validation_weights.cpu().numpy())
+                all_predictions.extend(preds.detach().cpu().numpy())
+                all_labels.extend(labels_.detach().cpu().numpy())
+                weights.extend(validation_weights.detach().cpu().numpy())
 
                 if vae_is_latent_training:
-                    latent_vectors.append(outputs[1].cpu())
-                    latent_labels.append(labels_.cpu())  # FIXME -> get from model
+                    latent_vectors.append(outputs[1].detach().cpu())
+                    latent_labels.append(labels_.detach().cpu())  # FIXME -> get from model
             else:
                 _, preds = torch.max(outputs, 1)
-                all_predictions.extend(preds.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-                weights.extend(validation_weights.cpu().numpy())
+                all_predictions.extend(preds.detach().cpu().numpy())
+                all_labels.extend(labels.detach().cpu().numpy())
+                weights.extend(validation_weights.detach().cpu().numpy())
 
 
     # calc metrics
@@ -177,34 +149,9 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
 
     # Silhoutte Score + PCA Scatter Plot
     if is_autoencoder and vae_is_latent_training:
-        if len(latent_vectors) > 0:
-            # Latent Space Cluster Analysis (PCA + Silhoutte Score)
-            X_latent = torch.cat(latent_vectors, dim=0).numpy()
-            y_labels = torch.cat(latent_labels, dim=0).numpy()
-
-            # Compute Silhoutte Score
-            if len(set(y_labels)) > 1:
-                silhouette_score_ = silhouette_score(X_latent, y_labels)
-                tensorboard_writer.add_scalar("Latent/Silhoutte_Score", silhouette_score_, cur_epoch)
-                print(f"Latent Space Silhoutte Score: {silhouette_score_:.4f}")
-
-            # PCA Scatter Plot from Latent Space
-            pca_2d = PCA(n_components=2).fit_transform(X_latent)
-            fig, ax = plt.subplots(figsize=(8, 6))
-            scatter = ax.scatter(pca_2d[:, 0], pca_2d[:, 1], c=y_labels, cmap='tab10', alpha=0.6, s=15)
-            plt.colorbar(scatter, ax=ax, label="Class Labels")
-            ax.set_title(f"Latent Space PCA (Epoch {cur_epoch})")
-
-            save_path = f"{output_dir}/latent_space_pca_{cur_epoch:03}_{plots}.png" if output_dir else None
-            if save_path:
-                plt.savefig(save_path)
-
-            tensorboard_writer.add_figure("LatentSpace/PCA_Scatter", fig, global_step=cur_epoch)
-            plt.close(fig)
-
+        latent_cluster_analysis(latent_vectors, latent_labels, output_dir, plots, cur_epoch, tensorboard_writer)
 
     return metrics, loss / len(data_loader)
-
 
 
 
@@ -217,6 +164,9 @@ def train(
         learning_rate, 
         weight_decay, 
         criterion_name,
+        vae_criterion_beta,
+        vae_criterion_use_smooth_beta,
+        vae_criterion_use_smooth_beta_start_value,
         optimizer_name, 
         scheduler_name, 
         output_dir,
@@ -237,6 +187,9 @@ def train(
         learning_rate (float): Learning rate for the optimizer.
         weight_decay (float): Weight decay for the optimizer.
         criterion_name (str): Loss/criterion to use.
+        vae_criterion_beta (float): Beta value of VAE Loss for Controlling Normal Distribution Force.
+        vae_criterion_use_smooth_beta (bool): Decides if using smoothing if using VAE Loss.
+        vae_criterion_use_smooth_beta_start_value (float): Defines the startvalue of the smoothing of VAE Loss.
         optimizer_name (str): Optimizer to use.
         scheduler_name (str): Learning rate scheduler to use.
         output_dir (str): Directory to save the trained model, plots, and logs.
@@ -274,7 +227,7 @@ def train(
     
     optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
     scheduler = get_scheduler(scheduler_name, optimizer, num_epochs)
-    criterion = get_criterion(criterion_name)
+    criterion = get_criterion(criterion_name, vae_criterion_beta=vae_criterion_beta, vae_criterion_use_smooth_beta=vae_criterion_use_smooth_beta, vae_criterion_use_smooth_beta_start_value=vae_criterion_use_smooth_beta_start_value)
 
     if continue_training:
         start_epoch, best_val_accuracy, best_model_epoch, latest_model_epoch, best_checkpoint_path = load_train_state(output_dir, model, optimizer, scheduler)
@@ -314,6 +267,12 @@ def train(
         model.train()
         running_loss = 0.0
 
+        if hasattr(criterion, "epoch_update"):
+            criterion.epoch_update(new_epoch=epoch, total_epochs=num_epochs)
+        if hasattr(criterion, "beta"):
+            tensorboard_writer.add_scalar("CriterionBeta/Train", criterion.beta, epoch)
+
+
         for imgs, labels, _, _ in tqdm(train_data, total=len(train_data), desc=f"NCA Training Epoch {epoch:03}"):
             imgs = imgs.to(device)
             if not is_autoencoder:
@@ -342,6 +301,9 @@ def train(
         metrics, val_loss = validate(model, model_name, criterion, val_data, device, tensorboard_writer, cur_epoch=epoch, output_dir=output_dir, vae_is_latent_training=vae_is_latent_training, vae_using_nca=vae_using_nca)
         tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
         tensorboard_writer.add_scalar("Balanced_Accuracy/Validation", metrics['balanced_accuracy'], epoch)
+        if is_autoencoder and vae_is_latent_training:
+            tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.latest_reconstruction_loss.item(), epoch)
+            tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.latest_kl_loss.item(), epoch)
 
 
         # Save Weights
@@ -409,6 +371,9 @@ def main(config):
         config, output_dir = get_config_and_dir_from_last_train(output_dir=last_training_output_dir)
 
     # extract configs
+    # to handle new added config attributes
+    try_extract_optional_param = lambda attr, conf, default: getattr(conf, attr) if hasattr(conf, attr) else default
+
     model_name = config.model.name
     model_kwargs = config.model.kwargs
     data_path = config.data.path
@@ -417,6 +382,9 @@ def main(config):
     learning_rate = config.train.learning_rate
     weight_decay = config.train.weight_decay
     criterion = config.train.criterion
+    vae_criterion_beta = try_extract_optional_param("vae_criterion_beta", config.train, 1.0)
+    vae_criterion_use_smooth_beta = try_extract_optional_param("vae_criterion_use_smooth_beta", config.train, True)
+    vae_criterion_use_smooth_beta_start_value = try_extract_optional_param("vae_criterion_use_smooth_beta_start_value", config.train, 0.2)
     optimizer = config.train.optimizer
     scheduler = config.train.scheduler
     output_dir = config.train.output_dir
@@ -449,6 +417,9 @@ def main(config):
         learning_rate=learning_rate,
         weight_decay=weight_decay,
         criterion_name=criterion,
+        vae_criterion_beta=vae_criterion_beta,
+        vae_criterion_use_smooth_beta = vae_criterion_use_smooth_beta,
+        vae_criterion_use_smooth_beta_start_value = vae_criterion_use_smooth_beta_start_value,
         optimizer_name=optimizer,
         scheduler_name=scheduler,
         output_dir=output_dir,

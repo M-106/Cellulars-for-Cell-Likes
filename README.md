@@ -74,7 +74,7 @@ Applying neural cellular automates onto skin cancer image data for classificatio
 - Vary Steps
 - Vary with Perception (sobel, trained, pretrained)
 - AlexNet Inspired Net
-- AlexNet Inspired + NCA (on Feature Space / in Clssification Head)
+- AlexNet Inspired + NCA (on Backbone Feature Space)
 - AutoEncoder + NCA
 
 > Researchquestion: Does it make sense to use NCAs applying on Feature Space or is it more effective to use them directly or on latent space.
@@ -90,7 +90,7 @@ Checking the results do:
 1. Open Anaconda Prompt
 2. Start env and tensorboard
     ```bash
-    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-22_09-21-39_experiment_run_fixed\logs"
+    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-25_01-56-43_VAE\logs"
     ```
 
 <!--

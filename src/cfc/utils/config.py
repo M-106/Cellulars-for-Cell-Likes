@@ -50,6 +50,9 @@ class TrainConfig(BaseModel):
     learning_rate: float
     weight_decay: float
     criterion: str
+    vae_criterion_beta: float
+    vae_criterion_use_smooth_beta: bool
+    vae_criterion_use_smooth_beta_start_value: float
     optimizer: str
     scheduler: Union[str, None]
     output_dir: str

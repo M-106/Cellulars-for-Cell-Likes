@@ -5,27 +5,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from cfc.model.neural_cellular_automata import NeuralCellularAutomata
+
 
 
 # ---------
 # > Model <
 # ---------
-class Encoder(nn.Module):
-    def __init__(self):
-            pass
-    
-    def forward(self, x):
-        pass
-
-
-class Decoder(nn.Module):
-    def __init__(self):
-            pass
-    
-    def forward(self, x):
-        pass
-
-
 class ConvVAE(nn.Module):
     def __init__(self, num_classes, latent_dim=128, input_width=600, input_height=450, vae_is_latent_training=True, dropout=0.2, vae_using_nca=False, **kwargs):
         super().__init__()
@@ -53,10 +39,11 @@ class ConvVAE(nn.Module):
             nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2),
 
-            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # [512, 9, 7]
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
+            # nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # [512, 9, 7]
+            # nn.BatchNorm2d(512),
+            # nn.LeakyReLU(0.2),
         )
+
 
         # --- Latent-Space Projection ---
 
@@ -85,16 +72,17 @@ class ConvVAE(nn.Module):
         self.last_out_channels = last_out_channels
 
         # -> mean value mu & variance logarithm logvar
-        self.fc_mu = nn.Linear(last_out_channels * 3 * 3, latent_dim)
-        self.fc_logvar = nn.Linear(last_out_channels * 3 * 3, latent_dim)
+        self.fc_mu = nn.Linear(last_out_channels * 7 * 7, latent_dim)
+        self.fc_logvar = nn.Linear(last_out_channels * 7 * 7, latent_dim)
+
 
         # --- Decoder ---
         self.decoder_input = nn.Linear(latent_dim, last_out_channels * width * height)
 
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.LeakyReLU(0.2),
+            # nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
+            # nn.BatchNorm2d(512),
+            # nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(256),
@@ -115,6 +103,27 @@ class ConvVAE(nn.Module):
             nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()  # -> [0; 1]
         )
+
+
+        # --- NCA Layer ---
+        self.vae_using_nca = vae_using_nca
+        if vae_using_nca:
+            self.nca = NeuralCellularAutomata(
+                input_channels=512,  # latent_dim, 
+                num_classes=num_classes, 
+                hidden_channels=512, 
+                steps=8, 
+                update_blocks=1, 
+                update_blocks_activation_kernel_size=3, 
+                update_blocks_activation_kernel_size_2=1,
+                update_blocks_activation="relu",
+                final_update_block_activation_kernel_size=1,
+                final_update_block_activation="tanh",
+                perception_filter="learnable",
+                dropout=0.1,
+                classification_mode=False
+            )
+
 
         # --- Classification Head ---
         self.class_head = nn.Sequential(
@@ -141,6 +150,8 @@ class ConvVAE(nn.Module):
             self.decoder_input.requires_grad_(True)
             self.decoder.requires_grad_(True)
             self.class_head.requires_grad_(False)
+            if self.vae_using_nca:
+                self.nca.requires_grad_(True)
         else:
             self.encoder.requires_grad_(False)
             self.fc_mu.requires_grad_(False)
@@ -148,6 +159,9 @@ class ConvVAE(nn.Module):
             self.decoder_input.requires_grad_(False)
             self.decoder.requires_grad_(False)
             self.class_head.requires_grad_(True)
+            if self.vae_using_nca:
+                self.nca.requires_grad_(False)
+
 
     def reparameterize(self, mu, logvar):
         """
@@ -164,6 +178,11 @@ class ConvVAE(nn.Module):
     def forward(self, x, classify=False):
         # encoding
         latent_space = self.encoder(x)  # torch.Size([6, 512, 3, 3])
+
+        # backbone refinement NCA
+        if self.vae_using_nca:
+            latent_space = self.nca(latent_space)
+
         latent_space = torch.flatten(latent_space, start_dim=1)  # torch.Size([6, 4608])
         mu = self.fc_mu(latent_space)
         logvar = self.fc_logvar(latent_space)

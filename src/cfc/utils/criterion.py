@@ -28,29 +28,55 @@ class FocalLoss(nn.Module):
 # > Define VAE Loss <
 # ---------------------
 class VAELoss(nn.Module):
-    def __init__(self, beta=1.0):
+    def __init__(self, beta=1.0, beta_growing=True, beta_start_epoch=0.2):
         super().__init__()
+        self.target_beta = beta
         self.beta = beta
+        self.beta_growing = beta_growing
+        self.beta_start_epoch = beta_start_epoch
+
+        self.latest_reconstruction_loss = float("inf")
+        self.latest_kl_loss = float("inf")
 
     def forward(self, inputs, targets):
         reconstructed_x, mu, logvar = inputs
         return self.loss_(reconstructed_x, targets, mu, logvar)
 
     def loss_(self, reconstructed_x, x, mu, logvar):
+        batch_size = x.size(0)
+
         # comparison to the original image
         reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction='sum')
+        self.latest_reconstruction_loss = reconstruction_loss.detach().cpu() / batch_size
     
         # kl-divergence -> force latent space to follow standard-normal-distribution
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        self.latest_kl_loss = kl_loss.detach().cpu() / batch_size
 
-        return reconstruction_loss + (self.beta * kl_loss)
+        total_loss = reconstruction_loss + (self.beta * kl_loss)
+
+        return total_loss / batch_size
+
+    def epoch_update(self, new_epoch, total_epochs):
+        # Regulation against Posterior Collapse
+        if self.beta_growing:
+            epoch_progress = new_epoch / total_epochs
+
+            if epoch_progress < self.beta_start_epoch:
+                self.beta = 0.0
+            else:
+                norm_progress = (epoch_progress - self.beta_start_epoch) / (1.0 - self.beta_start_epoch + 1e-8)
+                self.beta = min(self.target_beta, norm_progress * self.target_beta)
+        else:
+            self.beta = self.target_beta
+
 
 
 
 # ---------------------
 # > Criterion Loading <
 # ---------------------
-def get_criterion(criterion_name, class_weights=None):
+def get_criterion(criterion_name, class_weights=None, vae_criterion_beta=1.0, vae_criterion_use_smooth_beta=True, vae_criterion_use_smooth_beta_start_value=0.2):
     """
     Load a criterion (loss function) based on the provided criterion name.
 
@@ -71,7 +97,7 @@ def get_criterion(criterion_name, class_weights=None):
         return FocalLoss(gamma=2.0, alpha=class_weights)
 
     elif criterion_name.lower() == "vae_loss":
-        return VAELoss(beta=1.0)
+        return VAELoss(beta=vae_criterion_beta, beta_growing=vae_criterion_use_smooth_beta, beta_start_epoch=vae_criterion_use_smooth_beta_start_value)
     
     else:
         raise ValueError(f"Criterion {criterion_name} not supported.")
