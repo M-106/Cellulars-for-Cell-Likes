@@ -155,6 +155,15 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
 
 
 
+def get_vae_training_is_latent_training(model):
+    if hasattr(model, "train_target_state"):
+        # note: even if that is another model, True would be fine (/not matter)
+        if model.train_target_state == 0:
+            return True
+
+    return False
+
+
 def train(
         model_name, 
         model_kwargs,
@@ -220,10 +229,10 @@ def train(
 
     # get model
     is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"]
-    vae_is_latent_training = model_kwargs["vae_is_latent_training"]
     vae_using_nca = model_kwargs["vae_using_nca"]
     model = get_model(model_name, num_classes=len(train_data.dataset.class_names), **model_kwargs)
     model.to(device)
+    vae_is_latent_training = get_vae_training_is_latent_training(model)
     
     optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
     scheduler = get_scheduler(scheduler_name, optimizer, num_epochs)
@@ -272,7 +281,13 @@ def train(
         if hasattr(criterion, "beta"):
             tensorboard_writer.add_scalar("CriterionBeta/Train", criterion.beta, epoch)
 
+        if hasattr(model, "epoch_update"):
+            model.epoch_update(epoch, num_epochs)
+        if hasattr(model, "train_target_state"):
+            tensorboard_writer.add_scalar("ModelState", model.train_target_state, epoch)
+        vae_is_latent_training = get_vae_training_is_latent_training(model)
 
+        # one train loop
         for imgs, labels, _, _ in tqdm(train_data, total=len(train_data), desc=f"NCA Training Epoch {epoch:03}"):
             imgs = imgs.to(device)
             if not is_autoencoder:
@@ -302,8 +317,8 @@ def train(
         tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
         tensorboard_writer.add_scalar("Balanced_Accuracy/Validation", metrics['balanced_accuracy'], epoch)
         if is_autoencoder and vae_is_latent_training:
-            tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.latest_reconstruction_loss.item(), epoch)
-            tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.latest_kl_loss.item(), epoch)
+            tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.vae_loss.latest_reconstruction_loss.item(), epoch)
+            tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.vae_loss.latest_kl_loss.item(), epoch)
 
 
         # Save Weights

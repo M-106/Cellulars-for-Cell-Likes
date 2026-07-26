@@ -4,22 +4,22 @@ mode: "train"  # "train", "test"
 
 
 train:
-    num_epochs: 50
+    num_epochs: 100
     batch_size: 6  # 36
     learning_rate: 0.001
     weight_decay: 0.0001
     criterion: "vae_loss"  # "cross_entropy", "focal_loss", "vae_loss"
-    vae_criterion_beta: 1.0
+    vae_criterion_beta: 2.0
     vae_criterion_use_smooth_beta: True
     vae_criterion_use_smooth_beta_start_value: 0.2
     optimizer: "Adamw"  # "Adamw", "SGD"
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "VAE_reduced_convs_error_abg_beta_smoothing" #  "experiment_run_fixed"
+    exp_name: "VAE_changed_3_out_resolution_fix_batch_norm_removed" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
     continue_training: False
-    last_training_output_dir: "./output/2026-07-25_01-56-43_VAE"
+    last_training_output_dir: "./output/2026-07-26_00-22-31_VAE_reduced_convs_error_abg_beta_smoothing"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -33,6 +33,7 @@ train:
     # 2026-07-23_00-55-50_experiment_run_fixed
     # 2026-07-23_16-09-31_experiment_run_fixed
     # 2026-07-25_01-56-43_VAE
+    # 2026-07-25_19-08-54_VAE_reduced_convs_error_abg_beta_smoothing
 
 
 
@@ -42,7 +43,7 @@ test:
 
 
 model:
-    name: "convvae"  # standard_nca, convvae
+    name: "convvae"  # standard_nca, convvae, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca
     check_point_path: None
     # "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
     # None 
@@ -59,7 +60,6 @@ model:
         perception_filter: "learnable"                      # "sobel", "laplacian", "learnable", "pretrained"
         dropout: 0.5                                    # 0.0, 0.1, 0.2, 0.3
         vae_latent_dim: 128
-        vae_is_latent_training: True
         vae_using_nca: False
 
 

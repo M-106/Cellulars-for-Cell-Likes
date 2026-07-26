@@ -13,91 +13,77 @@ from cfc.model.neural_cellular_automata import NeuralCellularAutomata
 # > Model <
 # ---------
 class ConvVAE(nn.Module):
-    def __init__(self, num_classes, latent_dim=128, input_width=600, input_height=450, vae_is_latent_training=True, dropout=0.2, vae_using_nca=False, **kwargs):
+    def __init__(self, num_classes, latent_dim=128, input_width=600, input_height=450, dropout=0.2, vae_using_nca=False, **kwargs):
         super().__init__()
 
         # --- Encoder ---
         # [3, 600, 450]
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=4, stride=2, padding=1),   # [32, 300, 225]
-            nn.BatchNorm2d(32),
+            # nn.BatchNorm2d(32),
             nn.LeakyReLU(0.2),
 
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),   # [64, 150, 112]  # cut number after comma
-            nn.BatchNorm2d(64),
+            # nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
 
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),   # [128, 75, 56]
-            nn.BatchNorm2d(128),
+            # nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
 
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # [256, 37, 28]
-            nn.BatchNorm2d(256),
+            # nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2),
 
             nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),  # [512, 18, 14]
-            nn.BatchNorm2d(512),
+            # nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2),
 
-            # nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # [512, 9, 7]
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),  # [512, 9, 7]
             # nn.BatchNorm2d(512),
-            # nn.LeakyReLU(0.2),
+            nn.LeakyReLU(0.2),
         )
+
+
+        with torch.no_grad():
+            x = torch.zeros(2, 3, input_height, input_width)
+            x = self.encoder(x)
+            _, c, h, w = x.shape
+        self.encoder_out_width = w
+        self.encoder_out_height = h
+        self.encoder_out_channels = c
 
 
         # --- Latent-Space Projection ---
 
-        # calc height & width for FCs
-        def calc_out_dim(dim, padding, kernel_size, stride):
-            return ((dim + 2 * padding - kernel_size) // stride) + 1
-            # using // for floor operator, we want to round down, always
-        
-        width = input_width
-        height = input_height
-        last_out_channels = 3
-        for layer in self.encoder:
-            if isinstance(layer, nn.Conv2d):
-                padding_ = layer.padding[0] if isinstance(layer.padding, tuple) else layer.padding
-                kernel_ = layer.kernel_size[0] if isinstance(layer.kernel_size, tuple) else layer.kernel_size
-                stride_ = layer.stride[0] if isinstance(layer.stride, tuple) else layer.stride
-
-                # conv_dim_update = lambda x: int( ((x + 2 * padding_ - kernel_) // stride_) +1 )
-            
-                width = calc_out_dim(dim=width, padding=padding_, kernel_size=kernel_, stride=stride_)
-                height = calc_out_dim(dim=height, padding=padding_, kernel_size=kernel_, stride=stride_)
-
-                last_out_channels = layer.out_channels[0] if isinstance(layer.out_channels, tuple) else layer.out_channels
-        self.width = width
-        self.height = height
-        self.last_out_channels = last_out_channels
-
         # -> mean value mu & variance logarithm logvar
-        self.fc_mu = nn.Linear(last_out_channels * 7 * 7, latent_dim)
-        self.fc_logvar = nn.Linear(last_out_channels * 7 * 7, latent_dim)
+        self.fc_mu = nn.Linear(self.encoder_out_channels * self.encoder_out_width * self.encoder_out_height, latent_dim)
+        self.fc_logvar = nn.Linear(self.encoder_out_channels * self.encoder_out_width * self.encoder_out_height, latent_dim)
 
 
         # --- Decoder ---
-        self.decoder_input = nn.Linear(latent_dim, last_out_channels * width * height)
+        self.decoder_input = nn.Linear(latent_dim, self.encoder_out_channels * self.encoder_out_width * self.encoder_out_height)
 
         self.decoder = nn.Sequential(
-            # nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
-            # nn.BatchNorm2d(512),
-            # nn.LeakyReLU(0.2),
+            # output-padding tells the network to use the bigger option -> 3 could be 6 or 7, because downsampling 7 also resolves in 6
+            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1, output_padding=1),
+            # nn.BatchNorm2d(512),  # InstanceNorm?
+            nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
+            # nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            # nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
+            # nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(32),
+            # nn.BatchNorm2d(32),
             nn.LeakyReLU(0.2),
 
             nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),
@@ -109,9 +95,9 @@ class ConvVAE(nn.Module):
         self.vae_using_nca = vae_using_nca
         if vae_using_nca:
             self.nca = NeuralCellularAutomata(
-                input_channels=512,  # latent_dim, 
+                input_channels=self.encoder_out_channels,  # latent_dim, 
                 num_classes=num_classes, 
-                hidden_channels=512, 
+                hidden_channels=self.encoder_out_channels, 
                 steps=8, 
                 update_blocks=1, 
                 update_blocks_activation_kernel_size=3, 
@@ -128,22 +114,23 @@ class ConvVAE(nn.Module):
         # --- Classification Head ---
         self.class_head = nn.Sequential(
             nn.Dropout(dropout),
-            nn.Linear(latent_dim, 4096),
+            nn.Linear(latent_dim, 512),
             nn.LeakyReLU(0.2),
 
             nn.Dropout(dropout),
-            nn.Linear(4096, 4096),
+            nn.Linear(512, 256),
             nn.LeakyReLU(0.2),
 
-            nn.Linear(4096, num_classes)
+            nn.Linear(256, num_classes)
         )
 
         # set weight learning state
-        self.set_freeze_state(vae_is_latent_training)
+        self.train_target_state = 0
+        self.freeze_via_train_target_state()
 
 
-    def set_freeze_state(self, vae_is_latent_training):
-        if vae_is_latent_training:
+    def freeze_via_train_target_state(self):
+        if self.train_target_state == 0:
             self.encoder.requires_grad_(True)
             self.fc_mu.requires_grad_(True)
             self.fc_logvar.requires_grad_(True)
@@ -152,7 +139,7 @@ class ConvVAE(nn.Module):
             self.class_head.requires_grad_(False)
             if self.vae_using_nca:
                 self.nca.requires_grad_(True)
-        else:
+        elif self.train_target_state == 1:
             self.encoder.requires_grad_(False)
             self.fc_mu.requires_grad_(False)
             self.fc_logvar.requires_grad_(False)
@@ -161,6 +148,8 @@ class ConvVAE(nn.Module):
             self.class_head.requires_grad_(True)
             if self.vae_using_nca:
                 self.nca.requires_grad_(False)
+        else:
+            raise ValueError(f"Unknown train-target-state: {self.train_target_state}")
 
 
     def reparameterize(self, mu, logvar):
@@ -181,11 +170,14 @@ class ConvVAE(nn.Module):
 
         # backbone refinement NCA
         if self.vae_using_nca:
+            raise ValueError("DEBUGGING STOP, should not go here")
             latent_space = self.nca(latent_space)
 
         latent_space = torch.flatten(latent_space, start_dim=1)  # torch.Size([6, 4608])
         mu = self.fc_mu(latent_space)
         logvar = self.fc_logvar(latent_space)
+        logvar = torch.clamp(logvar, min=-20.0, max=10.0)
+        # else exploding grdients can occur
 
         # sample from latent space
         z = self.reparameterize(mu, logvar)
@@ -199,7 +191,7 @@ class ConvVAE(nn.Module):
         else:
             # decoding
             out = self.decoder_input(z)
-            out = out.view(-1, self.last_out_channels, self.height, self.width)
+            out = out.view(-1, self.encoder_out_channels, self.encoder_out_height, self.encoder_out_width)
             reconstructed_x = self.decoder(out)
 
             # interpolate if needed
@@ -207,6 +199,15 @@ class ConvVAE(nn.Module):
                 reconstructed_x = F.interpolate(reconstructed_x, size=x.shape[-2:], mode='bilinear', align_corners=False)
 
             return reconstructed_x, mu, logvar
+
+
+    def epoch_update(self, epoch, total):
+        epoch_progress = epoch/total
+        if epoch_progress < 0.5:
+            self.train_target_state = 0
+        else:
+            self.train_target_state = 1
+        self.freeze_via_train_target_state()
 
 
 

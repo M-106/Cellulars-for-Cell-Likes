@@ -19,6 +19,9 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
     Returns:
         torch.nn.Module: The loaded model.
     """
+    width = height = 224
+    # not 600 x 400
+
     # if model_name.lower() == "resnet18":
     #     from torchvision.models import resnet18
     #     model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
@@ -33,8 +36,42 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
 
     elif model_name.lower() == "convvae":
         from cfc.model.autoencoder import ConvVAE
-        model = ConvVAE(num_classes=num_classes, input_width=600, input_height=450, **kwargs)
+        model = ConvVAE(num_classes=num_classes, input_width=width, input_height=height, **kwargs)
 
+    elif model_name.lower() == "alexnet":
+            from cfc.model.alexnet import AlexNet
+            model = AlexNet(input_channels=3, input_width=width, input_height=height, num_classes=num_classes, **kwargs)
+
+    elif model_name.lower() == "mixed_alexnet_nca_feature_booster_net":
+            from cfc.model.alexnet import AlexNetNCAFeatureBoosterNet
+            model = AlexNetNCAFeatureBoosterNet(
+                input_channels=3, 
+                input_width=width, 
+                input_height=height, 
+                num_classes=num_classes, 
+                **kwargs
+            )
+
+    elif model_name.lower() == "efficientnet":
+        from cfc.model.efficientnet import EfficientNetClassifier
+        model = EfficientNetClassifier(
+            input_channels=3, 
+            input_width=width, 
+            input_height=height, 
+            num_classes=num_classes, 
+            **kwargs
+        )
+
+    elif model_name.lower() == "efficientnet_nca":
+        from cfc.model.efficientnet import EfficientNetNCAClassifier
+        model = EfficientNetNCAClassifier(
+            input_channels=3, 
+            input_width=width, 
+            input_height=height, 
+            num_classes=num_classes, 
+            **kwargs
+        )
+    
     else:
         raise ValueError(f"Model {model_name} not supported.")
 

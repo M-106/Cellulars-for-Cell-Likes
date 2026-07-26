@@ -43,19 +43,19 @@ class VAELoss(nn.Module):
         return self.loss_(reconstructed_x, targets, mu, logvar)
 
     def loss_(self, reconstructed_x, x, mu, logvar):
-        batch_size = x.size(0)
+        # batch_size = x.size(0)
 
         # comparison to the original image
-        reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction='sum')
-        self.latest_reconstruction_loss = reconstruction_loss.detach().cpu() / batch_size
+        reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction='mean')
+        self.latest_reconstruction_loss = reconstruction_loss.detach().cpu()
     
         # kl-divergence -> force latent space to follow standard-normal-distribution
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        self.latest_kl_loss = kl_loss.detach().cpu() / batch_size
+        self.latest_kl_loss = kl_loss.detach().cpu()
 
         total_loss = reconstruction_loss + (self.beta * kl_loss)
 
-        return total_loss / batch_size
+        return total_loss 
 
     def epoch_update(self, new_epoch, total_epochs):
         # Regulation against Posterior Collapse
@@ -70,6 +70,31 @@ class VAELoss(nn.Module):
         else:
             self.beta = self.target_beta
 
+
+
+class MixedVAEClassificationLoss(nn.Module):
+    def __init__(self, beta=1.0, beta_growing=True, beta_start_epoch=0.2):
+        super().__init__()
+        self.vae_loss = VAELoss(beta=beta, beta_growing=beta_growing, beta_start_epoch=beta_start_epoch)
+        self.class_loss = FocalLoss()
+
+        self.loss_state = 0
+
+    def forward(self, inputs, targets):
+        if self.loss_state == 0:
+            return self.vae_loss(inputs, targets)
+        elif self.loss_state == 1:
+            return self.class_loss(inputs, targets)
+        else:
+            raise ValueError(f"Have unknwon loss-state: {self.loss_state}")
+
+    def epoch_update(self, new_epoch, total_epochs):
+        epoch_progress = new_epoch / total_epochs
+
+        if epoch_progress < 0.5:
+            self.loss_state = 0
+        else:
+            self.loss_state = 1
 
 
 
@@ -97,7 +122,8 @@ def get_criterion(criterion_name, class_weights=None, vae_criterion_beta=1.0, va
         return FocalLoss(gamma=2.0, alpha=class_weights)
 
     elif criterion_name.lower() == "vae_loss":
-        return VAELoss(beta=vae_criterion_beta, beta_growing=vae_criterion_use_smooth_beta, beta_start_epoch=vae_criterion_use_smooth_beta_start_value)
+        return MixedVAEClassificationLoss(beta=vae_criterion_beta, beta_growing=vae_criterion_use_smooth_beta, beta_start_epoch=vae_criterion_use_smooth_beta_start_value)
+        # return VAELoss(beta=vae_criterion_beta, beta_growing=vae_criterion_use_smooth_beta, beta_start_epoch=vae_criterion_use_smooth_beta_start_value)
     
     else:
         raise ValueError(f"Criterion {criterion_name} not supported.")
