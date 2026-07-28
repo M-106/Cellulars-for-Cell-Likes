@@ -55,6 +55,7 @@ class TrainConfig(BaseModel):
     vae_criterion_use_smooth_beta_start_value: float
     optimizer: str
     scheduler: Union[str, None]
+    warmup_epochs: int
     output_dir: str
     exp_name: str
     used_train_samples: int

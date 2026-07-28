@@ -35,8 +35,12 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
         model = NeuralCellularAutomata(input_channels=3, num_classes=num_classes, **kwargs)
 
     elif model_name.lower() == "convvae":
-        from cfc.model.autoencoder import ConvVAE
+        from cfc.model.varientional_autoencoder import ConvVAE
         model = ConvVAE(num_classes=num_classes, input_width=width, input_height=height, **kwargs)
+
+    elif model_name.lower() == "convae":
+            from cfc.model.autoencoder import ConvAE
+            model = ConvAE(num_classes=num_classes, input_width=width, input_height=height, **kwargs)
 
     elif model_name.lower() == "alexnet":
             from cfc.model.alexnet import AlexNet
@@ -82,6 +86,13 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
 
 
 
+
+def is_ae(model):
+     from cfc.model.autoencoder import ConvAE
+     if isinstance(model, ConvAE):
+          return True
+     else:
+          False
 
 
 

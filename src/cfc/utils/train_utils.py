@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 
+from cfc.model.autoencoder import ConvAE
+
 
 
 # ------------
@@ -85,24 +87,28 @@ def latent_cluster_analysis(latent_vectors, latent_labels, output_dir, plots, cu
 @torch.no_grad()
 def check_active_dimensions(model, val_loader, device, threshold=0.01):
     model.eval()
-    all_mus = []
+    all_latent_values = []
     
     for imgs, _, _, _ in val_loader:
         imgs = imgs.to(device)
         latent_space = model.encoder(imgs)
         latent_space = torch.flatten(latent_space, start_dim=1)
-        mu = model.fc_mu(latent_space)
-        all_mus.append(mu.cpu())
-        
+        if isinstance(model, ConvAE):
+            z = model.encoder_fc(latent_space)
+            all_latent_values.append(z.cpu())
+        else:
+            mu = model.fc_mu(latent_space)
+            all_latent_values.append(mu.cpu())
+
     # [N_samples, latent_dim]
-    all_mus = torch.cat(all_mus, dim=0)
-    
+    all_latent_values = torch.cat(all_latent_values, dim=0)
+
     # compute the variance of latent-dimension over all validation samples
-    variances = torch.var(all_mus, dim=0)
+    variances = torch.var(all_latent_values, dim=0)
     
     # a dimension is active if its variance is beyond a threhold
     active_dims = torch.sum(variances > threshold).item()
-    total_dims = all_mus.shape[1]
+    total_dims = all_latent_values.shape[1]
     
     print(f"Active Latent-Dimensionen: {active_dims} / {total_dims}")
     if active_dims < 2:

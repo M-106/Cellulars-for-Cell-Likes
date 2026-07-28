@@ -90,7 +90,7 @@ Checking the results do:
 1. Open Anaconda Prompt
 2. Start env and tensorboard
     ```bash
-    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-25_01-56-43_VAE\logs"
+    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-27_07-43-35_VAE_changed_4_instance_norm_mean_kl_loss_bigger_latent\logs"
     ```
 
 <!--

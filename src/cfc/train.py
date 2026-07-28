@@ -20,7 +20,7 @@ from torch.utils.tensorboard import SummaryWriter
 from cfc.utils.config import save_config
 from cfc.utils.metrics import calculate_isic_metrics, get_used_label_names
 from cfc.utils.data import get_data
-from cfc.model.model_loading import get_model
+from cfc.model.model_loading import get_model, is_ae
 from cfc.utils.optimizer import get_optimizer
 from cfc.utils.scheduler import get_scheduler
 from cfc.utils.criterion import get_criterion
@@ -51,11 +51,9 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
     with torch.no_grad():
         for imgs, labels, _, validation_weights in tqdm(data_loader, total=len(data_loader), desc="Validation Run"):
             imgs = imgs.to(device)
-            if not is_autoencoder:
-                labels = labels.to(device)
-            else:
-                labels_ = labels
-                labels = imgs
+            labels = labels.to(device)
+            if is_autoencoder:
+                labels = (imgs, labels)
 
             # NCA Transition Plot & Step Stability
             if saved_transition is False and (not is_autoencoder or vae_using_nca):
@@ -129,12 +127,12 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
                 outputs_ = model(imgs, classify=True)
                 _, preds = torch.max(outputs_, 1)
                 all_predictions.extend(preds.detach().cpu().numpy())
-                all_labels.extend(labels_.detach().cpu().numpy())
+                all_labels.extend(labels[-1].detach().cpu().numpy())
                 weights.extend(validation_weights.detach().cpu().numpy())
 
                 if vae_is_latent_training:
                     latent_vectors.append(outputs[1].detach().cpu())
-                    latent_labels.append(labels_.detach().cpu())  # FIXME -> get from model
+                    latent_labels.append(labels[-1].detach().cpu())  # FIXME -> get from model
             else:
                 _, preds = torch.max(outputs, 1)
                 all_predictions.extend(preds.detach().cpu().numpy())
@@ -178,6 +176,7 @@ def train(
         vae_criterion_use_smooth_beta_start_value,
         optimizer_name, 
         scheduler_name, 
+        warmup_epochs,
         output_dir,
         exp_name,
         used_train_samples,
@@ -201,6 +200,7 @@ def train(
         vae_criterion_use_smooth_beta_start_value (float): Defines the startvalue of the smoothing of VAE Loss.
         optimizer_name (str): Optimizer to use.
         scheduler_name (str): Learning rate scheduler to use.
+        warmup_epochs (int): Number of warmup iterations/steps.
         output_dir (str): Directory to save the trained model, plots, and logs.
         exp_name (str): Name of the experiment for logging and saving purposes.
         used_train_samples (int): Decides how much samples getting used for training.
@@ -228,15 +228,27 @@ def train(
     )
 
     # get model
-    is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"]
+    num_classes = len(train_data.dataset.class_names)
+    is_autoencoder_or_vae = model_name.lower() in ["vae", "convvae", "ae", "convae"]
     vae_using_nca = model_kwargs["vae_using_nca"]
-    model = get_model(model_name, num_classes=len(train_data.dataset.class_names), **model_kwargs)
+    model = get_model(model_name, num_classes=num_classes, **model_kwargs)
     model.to(device)
     vae_is_latent_training = get_vae_training_is_latent_training(model)
+    is_autoencoder_class_not_vae = is_ae(model)
+    latent_dim = model_kwargs["latent_dim"] if hasattr(model_kwargs, "latent_dim") else -1
+    lambda_center = model_kwargs["lambda_center"] if hasattr(model_kwargs, "lambda_center") else 0.0
     
     optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
-    scheduler = get_scheduler(scheduler_name, optimizer, num_epochs)
-    criterion = get_criterion(criterion_name, vae_criterion_beta=vae_criterion_beta, vae_criterion_use_smooth_beta=vae_criterion_use_smooth_beta, vae_criterion_use_smooth_beta_start_value=vae_criterion_use_smooth_beta_start_value)
+    # epoch_iters = int(len(train_data)/batch_size)
+    epoch_iters = len(train_data) # mount of batches # len(train_data.dataset)  => samples
+    scheduler = get_scheduler(scheduler_name, optimizer, num_epochs, warmup_epochs=warmup_epochs)
+    criterion = get_criterion(criterion_name, 
+                              num_classes=num_classes, 
+                              latent_dim=latent_dim, 
+                              lambda_center=lambda_center,
+                              vae_criterion_beta=vae_criterion_beta, 
+                              vae_criterion_use_smooth_beta=vae_criterion_use_smooth_beta, 
+                              vae_criterion_use_smooth_beta_start_value=vae_criterion_use_smooth_beta_start_value)
 
     if continue_training:
         start_epoch, best_val_accuracy, best_model_epoch, latest_model_epoch, best_checkpoint_path = load_train_state(output_dir, model, optimizer, scheduler)
@@ -266,7 +278,7 @@ def train(
             model.save_transition_sequence(x=input_data, save_path=os.path.join(output_dir, "nca_transition_epoch_-1.png"))
             del input_data
 
-        best_val_accuracy = 0.0 if not is_autoencoder else float('inf')
+        best_val_accuracy = 0.0 if not is_autoencoder_or_vae else float('inf')
         best_model_epoch = -1
         latest_model_epoch = -1
         best_checkpoint_path = None
@@ -280,6 +292,8 @@ def train(
             criterion.epoch_update(new_epoch=epoch, total_epochs=num_epochs)
         if hasattr(criterion, "beta"):
             tensorboard_writer.add_scalar("CriterionBeta/Train", criterion.beta, epoch)
+        if hasattr(criterion, "lambda_"):
+            tensorboard_writer.add_scalar("CriterionClassifyLambda/Train", criterion.lambda_, epoch)
 
         if hasattr(model, "epoch_update"):
             model.epoch_update(epoch, num_epochs)
@@ -290,15 +304,25 @@ def train(
         # one train loop
         for imgs, labels, _, _ in tqdm(train_data, total=len(train_data), desc=f"NCA Training Epoch {epoch:03}"):
             imgs = imgs.to(device)
-            if not is_autoencoder:
-                labels = labels.to(device)
-            else:
-                labels = imgs
+            labels = labels.to(device)
+
+            if is_autoencoder_or_vae:
+                labels = (imgs, labels)
 
             optimizer.zero_grad()
             outputs = model(imgs)
             loss = criterion(outputs, labels).mean()  # mean to avoid gradient explosion
             loss.backward()  
+
+            if is_autoencoder_or_vae and vae_is_latent_training:
+                if is_autoencoder_class_not_vae:
+                    tensorboard_writer.add_scalar("ZMean/Train", outputs[1].mean().item(), epoch)
+                    tensorboard_writer.add_scalar("ZStd/Train", outputs[1].std().item(), epoch)
+                else:
+                    tensorboard_writer.add_scalar("MuMean/Train", outputs[1].mean().item(), epoch)
+                    tensorboard_writer.add_scalar("MuStd/Train", outputs[1].std().item(), epoch)
+                    tensorboard_writer.add_scalar("LogVarMean/Train", outputs[2].mean().item(), epoch)
+                    tensorboard_writer.add_scalar("LogVarStd/Train", outputs[2].std().item(), epoch)
 
             # gradient clipping -> important with NCAs
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -316,9 +340,18 @@ def train(
         metrics, val_loss = validate(model, model_name, criterion, val_data, device, tensorboard_writer, cur_epoch=epoch, output_dir=output_dir, vae_is_latent_training=vae_is_latent_training, vae_using_nca=vae_using_nca)
         tensorboard_writer.add_scalar("Loss/Validation", val_loss, epoch)
         tensorboard_writer.add_scalar("Balanced_Accuracy/Validation", metrics['balanced_accuracy'], epoch)
-        if is_autoencoder and vae_is_latent_training:
-            tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.vae_loss.latest_reconstruction_loss.item(), epoch)
-            tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.vae_loss.latest_kl_loss.item(), epoch)
+        if is_autoencoder_or_vae:  #  and vae_is_latent_training:
+            if is_autoencoder_class_not_vae:
+                tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.ae_loss.latest_reconstruction_loss.item(), epoch)
+                tensorboard_writer.add_scalar("Loss/Classification", criterion.latest_cls_loss.item(), epoch)
+                tensorboard_writer.add_scalar("Loss/LatentDiversity", criterion.latest_center_loss.item(), epoch)
+
+                tensorboard_writer.add_scalar("LossLambda/Reconstruction", criterion.lambda_rec.item(), epoch)
+                tensorboard_writer.add_scalar("LossLambda/Classification", criterion.lambda_cls.item(), epoch)
+                tensorboard_writer.add_scalar("LossLambda/LatentDiversity", criterion.lambda_center.item(), epoch)
+            else:
+                tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.vae_loss.latest_reconstruction_loss.item(), epoch)
+                tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.vae_loss.latest_kl_loss.item(), epoch)
 
 
         # Save Weights
@@ -326,7 +359,7 @@ def train(
         torch.save(model.state_dict(), checkpoint_path)
         latest_model_epoch = epoch
 
-        if not is_autoencoder or not vae_is_latent_training:
+        if not is_autoencoder_or_vae or not vae_is_latent_training:
             cur_score = metrics['balanced_accuracy']
             cur_score_name = "Balanced Accuracy"
             cur_is_better = best_val_accuracy < cur_score
@@ -402,6 +435,7 @@ def main(config):
     vae_criterion_use_smooth_beta_start_value = try_extract_optional_param("vae_criterion_use_smooth_beta_start_value", config.train, 0.2)
     optimizer = config.train.optimizer
     scheduler = config.train.scheduler
+    warmup_epochs = try_extract_optional_param("warmup_epochs", config.train, 1)
     output_dir = config.train.output_dir
     exp_name = config.train.exp_name
     used_train_samples = config.train.used_train_samples
@@ -437,6 +471,7 @@ def main(config):
         vae_criterion_use_smooth_beta_start_value = vae_criterion_use_smooth_beta_start_value,
         optimizer_name=optimizer,
         scheduler_name=scheduler,
+        warmup_epochs=warmup_epochs,
         output_dir=output_dir,
         exp_name=exp_name,
         used_train_samples=used_train_samples,
