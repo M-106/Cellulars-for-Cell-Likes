@@ -157,7 +157,6 @@ class ConvAE(nn.Module):
 
         # backbone refinement NCA
         if self.vae_using_nca:
-            raise ValueError("DEBUGGING STOP, should not go here")
             latent_space = self.nca(latent_space)
 
         latent_space = torch.flatten(latent_space, start_dim=1)  # torch.Size([6, 4608])

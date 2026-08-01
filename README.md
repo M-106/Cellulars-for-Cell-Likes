@@ -76,6 +76,9 @@ Applying neural cellular automates onto skin cancer image data for classificatio
 - AlexNet Inspired Net
 - AlexNet Inspired + NCA (on Backbone Feature Space)
 - AutoEncoder + NCA
+- NCA + Latent-Space (global information) -> via MLP add
+- NCA + Input-Skip-Connection (?)
+- NCA + Global State as additional Input?
 
 > Researchquestion: Does it make sense to use NCAs applying on Feature Space or is it more effective to use them directly or on latent space.
 

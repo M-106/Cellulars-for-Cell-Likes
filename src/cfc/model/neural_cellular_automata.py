@@ -33,6 +33,12 @@ def measure_nca_stability(model, input_img):
     # prev_dropout = model.dropout
     # model.dropout = 0.0
     with torch.no_grad():
+        if not isinstance(model, NeuralCellularAutomata):
+            if hasattr(model, "encoder"):
+                input_img = model.encoder(input_img)
+            else:
+                input_img = model.backbone(input_img, classify=False)
+            model = model.nca
         x = model.input_projection_net(input_img)
 
         total_change = 0.0

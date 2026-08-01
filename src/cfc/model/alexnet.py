@@ -13,7 +13,7 @@ from cfc.model.neural_cellular_automata import NeuralCellularAutomata
 # > Model <
 # ---------
 class AlexNet(nn.Module):
-    def __init__(self, input_channels=3, input_width=600, input_height=450, num_classes=10, dropout=0.5, **kwargs):
+    def __init__(self, input_channels=3, input_width=600, input_height=450, num_classes=10, dropout=0.5, only_use_backbone=False, **kwargs):
         super().__init__()
 
         # --- Feature Extraction ---
@@ -36,6 +36,9 @@ class AlexNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
         )
+
+        # if only_use_backbone:
+        #     self.features = nn.Sequential(*list(self.features.children())[:-2])
 
         # we do not self compute the outpute size, but just give a dummy data through the net
         with torch.no_grad():
@@ -93,8 +96,10 @@ class AlexNetNCAFeatureBoosterNet(nn.Module):
             input_width=input_width, 
             input_height=input_height, 
             num_classes=num_classes, 
-            dropout=0.5
+            dropout=0.5,
+            only_use_backbone=True
         )
+        # self.encoder = self.backbone
 
         backbone_out = [self.backbone.feature_channels, 
                         self.backbone.feature_height, 
@@ -115,6 +120,7 @@ class AlexNetNCAFeatureBoosterNet(nn.Module):
             dropout=dropout,
             classification_mode=True
         )
+        self.nca = self.class_head
 
         self.train_target_state = 0
         self.freeze_via_train_target_state()
@@ -125,25 +131,32 @@ class AlexNetNCAFeatureBoosterNet(nn.Module):
             self.backbone.requires_grad_(True)
             self.class_head.requires_grad_(False)
         elif self.train_target_state == 1:
-            self.backbone.requires_grad_(False)
+            self.backbone.requires_grad_(True)
             self.class_head.requires_grad_(True)
         else:
             raise ValueError(f"Unknown train-target-state: {self.train_target_state}")
 
 
     def forward(self, x):
-        x = self.backbone(x, classify=True)
+        x = self.backbone(x, classify=False)
         x = self.class_head(x)
         return x
 
 
+
+    def get_last_state(self, x):
+        x = self.backbone(x, classify=False)
+        return self.class_head.get_last_state(x)
+
+
     def epoch_update(self, epoch, total):
         epoch_progress = epoch/total
-        if epoch_progress < 0.5:
+        if epoch_progress < 0.25:
             self.train_target_state = 0
         else:
             self.train_target_state = 1
         self.freeze_via_train_target_state()
+
 
 
 

@@ -36,7 +36,8 @@ from cfc.utils.train_utils import plot_sample_images, check_active_dimensions, l
 # --------------
 def validate(model, model_name, criterion, data_loader, device, tensorboard_writer, cur_epoch, output_dir=None, vae_is_latent_training=True, vae_using_nca=False):
     model.eval()
-    is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"] 
+    is_autoencoder = model_name.lower() in ["vae", "convvae", "ae", "convae"]
+    is_nca = model_name.lower() in  ["standard_nca", "convvae", "convea", "mixed_alexnet_nca_feature_booster_net", "efficientnet_nca"] 
     all_predictions, all_labels, weights = [], [], []
     latent_vectors, latent_labels = [], []
     loss = 0.0
@@ -56,7 +57,7 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
                 labels = (imgs, labels)
 
             # NCA Transition Plot & Step Stability
-            if saved_transition is False and (not is_autoencoder or vae_using_nca):
+            if saved_transition is False and (not is_autoencoder or vae_using_nca) and is_nca:
                 l2_stability = measure_nca_stability(model, imgs[0:1])
                 tensorboard_writer.add_scalar("Stability/L2_Change", l2_stability, cur_epoch)
 
@@ -92,7 +93,7 @@ def validate(model, model_name, criterion, data_loader, device, tensorboard_writ
                     plt.close(fig)
 
                 # NCA Sample Plot
-                else:
+                elif is_nca:
                     last_state = model.get_last_state(imgs[0:1])  # [1, C, H, W]
                     pred_grid = last_state[0].detach().cpu().permute(1, 2, 0).numpy()
                     H, W, C = pred_grid.shape
@@ -346,9 +347,9 @@ def train(
                 tensorboard_writer.add_scalar("Loss/Classification", criterion.latest_cls_loss.item(), epoch)
                 tensorboard_writer.add_scalar("Loss/LatentDiversity", criterion.latest_center_loss.item(), epoch)
 
-                tensorboard_writer.add_scalar("LossLambda/Reconstruction", criterion.lambda_rec.item(), epoch)
-                tensorboard_writer.add_scalar("LossLambda/Classification", criterion.lambda_cls.item(), epoch)
-                tensorboard_writer.add_scalar("LossLambda/LatentDiversity", criterion.lambda_center.item(), epoch)
+                tensorboard_writer.add_scalar("LossLambda/Reconstruction", criterion.lambda_rec, epoch)
+                tensorboard_writer.add_scalar("LossLambda/Classification", criterion.lambda_cls, epoch)
+                tensorboard_writer.add_scalar("LossLambda/LatentDiversity", criterion.lambda_center, epoch)
             else:
                 tensorboard_writer.add_scalar("Loss/Reconstruction", criterion.vae_loss.latest_reconstruction_loss.item(), epoch)
                 tensorboard_writer.add_scalar("Loss/KL_Divergence", criterion.vae_loss.latest_kl_loss.item(), epoch)
