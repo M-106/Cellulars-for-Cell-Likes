@@ -4,7 +4,7 @@ mode: "train"  # "train", "test"
 
 
 train:
-    num_epochs: 75
+    num_epochs: 50
     batch_size: 6  # 36
     learning_rate: 0.0005
     weight_decay: 0.0001
@@ -16,10 +16,10 @@ train:
     warmup_epochs: 2
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "AlexNet_run_NCA" #  "experiment_run_fixed"
+    exp_name: "NCA_with_FiLM" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
-    continue_training: True
+    continue_training: False
     last_training_output_dir: "./output/2026-08-01_13-13-14_AlexNet_run_NCA"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
@@ -44,7 +44,7 @@ test:
 
 
 model:
-    name: "mixed_alexnet_nca_feature_booster_net"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca
+    name: "standard_nca"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca
     check_point_path: None
     # "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
     # None 
@@ -63,6 +63,7 @@ model:
         latent_dim: 1014  # 128, 256, 512, 1024
         vae_using_nca: True
         lambda_center: 1.5
+        nca_latent_path: "./output/2026-07-29_09-00-40_AE_improved_upsampling_diversity_l1_loss"
 
 
 

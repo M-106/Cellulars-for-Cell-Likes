@@ -202,13 +202,19 @@ class NCAUpdateBlock(nn.Module):
         # and no cell is skipped, else, the border pixels would be skipped
 
 
-    def forward(self, x):
-        if self.is_final_block:
-            x = self.conv1(x)
-            x = self.activation(x)
-        else:
-            x = self.conv1(x)
-            x = self.activation(x)
+    def forward(self, x, gamma=None, beta=None):
+
+        x = self.conv1(x)
+
+        if gamma is not None and beta is not None:
+            # Reshape for Broadcasting over Spatial Dimensions: (B, C) -> (B, C, 1, 1)
+            g = gamma.unsqueeze(-1).unsqueeze(-1)
+            b = beta.unsqueeze(-1).unsqueeze(-1)
+            x = g * x + b
+
+        x = self.activation(x)
+
+        if not self.is_final_block:
             x = self.conv2(x)
         return x
     
@@ -220,6 +226,11 @@ class NeuralCellularAutomata(torch.nn.Module):
     The model consists of an input projection layer, a series of update blocks, and a classification head. 
     The update blocks are responsible for iteratively updating the hidden state of the model based on learned rules. 
     The final update block uses a Sigmoid activation to ensure that the updates are in a stable range.
+
+    Optionally with a FiLM adjsutment, where every Step gets multiplied and added a value (2 values) 
+    computed by a MLP using the latent representation from a Autoencoder 
+    to add global information (bottleneck of current approach).
+    FiLM = Feature-wise Linear Modulations
 
     > Note: Weights must be low initialized to ensure stability of the NCA. 
     > The final update block uses a Sigmoid activation to ensure that the updates are in a stable range. 
@@ -236,6 +247,9 @@ class NeuralCellularAutomata(torch.nn.Module):
                  perception_filter="sobel",
                  dropout=0.1,
                  classification_mode=True,
+                 latent_model=None,
+                 input_width=224,
+                 input_height=224,
                  **kwargs):
         super().__init__()
 
@@ -248,6 +262,8 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.steps = steps
         self.dropout = dropout
         self.classification_mode = classification_mode
+        self.latent_model = latent_model
+        self.latent_model.requires_grad_(False)
 
         # Perception -> already give every cell the information of their enviornment, via additional channels
         self.perception = Perception(hidden_channels, filter=perception_filter)
@@ -261,7 +277,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         kernel_sizes = handle_optional_list_param(update_blocks_activation_kernel_size, int, update_blocks)
         kernel_sizes_2 = handle_optional_list_param(update_blocks_activation_kernel_size_2, int, update_blocks)
         activations = handle_optional_list_param(update_blocks_activation, str, update_blocks, get_activation)
-        first_update_block = NCAUpdateBlock(
+        self.first_update_block = NCAUpdateBlock(
             input_channels=input_size, 
             hidden_channels=hidden_channels,
             output_channels=hidden_channels, 
@@ -283,7 +299,7 @@ class NeuralCellularAutomata(torch.nn.Module):
             for _, k, k2, a in zip(range(update_blocks-1), kernel_sizes[1:], kernel_sizes_2[1:], activations[1:])
         ]
         
-        final_update_block = NCAUpdateBlock(
+        self.final_update_block = NCAUpdateBlock(
             input_channels=hidden_channels, 
             hidden_channels=hidden_channels,
             output_channels=hidden_channels,
@@ -293,7 +309,22 @@ class NeuralCellularAutomata(torch.nn.Module):
         )
         
         # update_blocks.append(final_update_block)  
-        self.update_net = nn.Sequential(first_update_block, *update_blocks, final_update_block)
+        # self.update_net = nn.Sequential(first_update_block, *update_blocks, final_update_block)
+        self.middle_blocks = nn.ModuleList(update_blocks)
+        # FiLM Generator Setup
+        if self.latent_model is not None:
+            device = next(latent_model.parameters()).device
+            with torch.no_grad():
+                dummy_in = torch.zeros(1, input_channels, input_height, input_width, device=device)
+                dummy_out = self.latent_model(dummy_in, classify=False)[1] # if hasattr(self.latent_model, "encoder") else self.latent_model(dummy_in)
+                latent_dim = dummy_out.view(1, -1).shape[1]
+
+            # Creates gamma and beta (2 * hidden_channels)
+            self.film_generator = nn.Sequential(
+                nn.Linear(latent_dim, 256),
+                nn.LeakyReLU(0.2),
+                nn.Linear(256, 2 * hidden_channels)
+            )
 
         # Classification Head -> hidden state to class prediction
         self.classification_head = nn.Sequential(
@@ -306,9 +337,37 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.apply(init_weights)  # initialize weights of the model near 0
 
 
-    def step(self, x):
+    def _get_film_params(self, raw_img):
+        """
+        Extracts the Latent-Vector and creates gamma/beta.
+        """
+        if self.latent_model is None:
+            return None, None
+            
+        # call latent_model
+        z = self.latent_model(raw_img, classify=False)[1]
+
+        # creates gamma and beta
+        film_params = self.film_generator(z)
+        
+        # Split in gamma and beta
+        gamma, beta = torch.chunk(film_params, 2, dim=1)
+        
+        # Gamma around 1.0 centrate for stabile initialization (Identity Operation at beginning)
+        gamma = gamma + 1.0
+
+        return gamma, beta
+
+
+    def step(self, x, gamma=None, beta=None):
         perception = self.perception(x)
-        update = self.update_net(perception)
+        # update = self.update_net(perception)
+
+        h = self.first_update_block(perception, gamma=gamma, beta=beta)
+        for block in self.middle_blocks:
+            h = block(h, gamma=gamma, beta=beta)
+        update = self.final_update_block(h, gamma=gamma, beta=beta)
+
         # return x + update
 
         # if update.shape[2:] != x.shape[2:]:
@@ -327,17 +386,22 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         Like forward but returns the last hidden state instead of the logits.
         """
+        gamma, beta = self._get_film_params(x)
+
         # project input image to hidden state
         x = self.input_projection_net(x)
 
         # iterative updates of the hidden state
         for _ in range(self.steps):
-            x = self.step(x)
+            x = self.step(x, gamma=gamma, beta=beta)
 
         return x  # return the 4D grid state: [B, C, H, W]
     
 
     def forward(self, x):
+        # global modulation (if latent model exist)
+        gamma, beta = self._get_film_params(x) 
+
         # project input image to hidden state
         # if self.classification_mode:
         x = self.input_projection_net(x)
@@ -346,7 +410,7 @@ class NeuralCellularAutomata(torch.nn.Module):
 
         # iterative updates of the hidden state
         for _ in range(self.steps):
-            x = self.step(x)
+            x = self.step(x, gamma=gamma, beta=beta)
 
         if self.classification_mode:
             # classify the final hidden state
@@ -362,13 +426,15 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         x = x[0:1]
 
+        gamma, beta = self._get_film_params(x)
+
         current_x = self.input_projection_net(x)
 
         history = []
         history.append(current_x.detach().cpu())
 
         for _ in range(self.steps):
-            current_x = self.step(current_x)
+            current_x = self.step(current_x, gamma=gamma, beta=beta)
             history.append(current_x.detach().cpu())
 
         # apply PCA
@@ -401,6 +467,8 @@ class NeuralCellularAutomata(torch.nn.Module):
         # plt.tight_layout()
         # plt.savefig(save_path, dpi=300)
         # plt.close()
+
+
 
 
 

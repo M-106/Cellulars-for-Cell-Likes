@@ -1,6 +1,8 @@
 # -----------
 # > Imports <
 # -----------
+import os
+
 import torch
 
 
@@ -32,6 +34,17 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
     #     model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
     if model_name.lower() == "standard_nca":
         from cfc.model.neural_cellular_automata import NeuralCellularAutomata
+        from cfc.model.autoencoder import ConvAE
+
+        nca_latent_path = kwargs["nca_latent_path"] if "nca_latent_path" in kwargs.keys() else None
+        if nca_latent_path is not None and nca_latent_path not in ["None", "none"]:
+            train_state = torch.load(os.path.join(nca_latent_path, "last_train_state.pth"), map_location="cpu")
+            latent_kwargs = train_state["config"].model.kwargs
+
+            latent_model = ConvAE(num_classes=num_classes, input_width=width, input_height=height, **latent_kwargs)  # also add if nca is used??
+            latent_model.load_state_dict(torch.load(os.path.join(nca_latent_path, "best_model.pth"), map_location="cpu"))
+            kwargs["latent_model"] = latent_model
+
         model = NeuralCellularAutomata(input_channels=3, num_classes=num_classes, **kwargs)
 
     elif model_name.lower() == "convvae":
