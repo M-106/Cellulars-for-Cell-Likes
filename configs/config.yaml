@@ -1,10 +1,15 @@
 
-mode: "train"  # "train", "test"
+mode: "train"  # "train", "test", "convergence_test"
 
+# - Try out convergence test
+# - Try NCA with best params
+# - Maybe with higher hidden channels
+# - maybe longer training -> see convergence results
+# - finish alexnet training
 
 
 train:
-    num_epochs: 50
+    num_epochs: 50  # try more epochs once?
     batch_size: 6  # 36
     learning_rate: 0.0005
     weight_decay: 0.0001
@@ -16,11 +21,11 @@ train:
     warmup_epochs: 2
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "NCA_with_FiLM" #  "experiment_run_fixed"
+    exp_name: "NCA_experiment" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
     continue_training: False
-    last_training_output_dir: "./output/2026-08-01_13-13-14_AlexNet_run_NCA"
+    last_training_output_dir: "./output/2026-07-14_22-06-58_experiment_run"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -51,15 +56,15 @@ model:
     
     kwargs: 
         hidden_channels: 16                             # 8, 16, 32, 64, 128
-        steps: 16                                       # 8, 16, 32, 64, 128
+        steps: 8                                       # 8, 16, 32, 64, 128
         update_blocks: 1                                # 1, 2, 4, 8, 16
         update_blocks_activation_kernel_size: 3         # 3
         update_blocks_activation_kernel_size_2: 1 
         update_blocks_activation: "relu"                # "relu", "leaky_relu"
         final_update_block_activation_kernel_size: 1    # 1
-        final_update_block_activation: "leaky_relu"        # "sigmoid", "tanh", "leaky_relu"
+        final_update_block_activation: "sigmoid"        # "sigmoid", "tanh", "leaky_relu"
         perception_filter: "learnable"                      # "sobel", "laplacian", "learnable", "pretrained"
-        dropout: 0.5                                    # 0.0, 0.1, 0.2, 0.3
+        dropout: 0.2                                    # 0.0, 0.1, 0.2, 0.3
         latent_dim: 1014  # 128, 256, 512, 1024
         vae_using_nca: True
         lambda_center: 1.5

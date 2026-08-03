@@ -263,7 +263,8 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.dropout = dropout
         self.classification_mode = classification_mode
         self.latent_model = latent_model
-        self.latent_model.requires_grad_(False)
+        if self.latent_model is not None:
+            self.latent_model.requires_grad_(False)
 
         # Perception -> already give every cell the information of their enviornment, via additional channels
         self.perception = Perception(hidden_channels, filter=perception_filter)

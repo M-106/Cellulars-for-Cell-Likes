@@ -30,6 +30,10 @@ def main():
     elif config.mode == "test":
         from cfc.test import main as test_main
         test_main(config)
+
+    elif config.mode == "convergence_test":
+        from cfc.convergence_test import main as convergence_main
+        convergence_main(config)
         
     else:
         raise ValueError(f"'{config.mode}' is not an available mode for mcrlab.")

@@ -231,13 +231,13 @@ def train(
     # get model
     num_classes = len(train_data.dataset.class_names)
     is_autoencoder_or_vae = model_name.lower() in ["vae", "convvae", "ae", "convae"]
-    vae_using_nca = model_kwargs["vae_using_nca"]
+    vae_using_nca = model_kwargs["vae_using_nca"] if "vae_using_nca" in model_kwargs else False 
     model = get_model(model_name, num_classes=num_classes, **model_kwargs)
     model.to(device)
     vae_is_latent_training = get_vae_training_is_latent_training(model)
     is_autoencoder_class_not_vae = is_ae(model)
-    latent_dim = model_kwargs["latent_dim"] if hasattr(model_kwargs, "latent_dim") else -1
-    lambda_center = model_kwargs["lambda_center"] if hasattr(model_kwargs, "lambda_center") else 0.0
+    latent_dim = model_kwargs["latent_dim"] if "latent_dim" in model_kwargs else -1
+    lambda_center = model_kwargs["lambda_center"] if "lambda_center" in model_kwargs else 0.0
     
     optimizer = get_optimizer(optimizer_name, model.parameters(), learning_rate, weight_decay)
     # epoch_iters = int(len(train_data)/batch_size)
