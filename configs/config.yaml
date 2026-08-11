@@ -18,14 +18,14 @@ train:
     vae_criterion_use_smooth_beta: False
     vae_criterion_use_smooth_beta_start_value: 0.0
     optimizer: "Adamw"  # "Adamw", "SGD"
-    warmup_epochs: 2
+    warmup_epochs: 0
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "NCA_experiment" #  "experiment_run_fixed"
+    exp_name: "NCA_experiment_time_FiLM" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5
     used_val_samples: -1   # -1, 5
     continue_training: False
-    last_training_output_dir: "./output/2026-07-14_22-06-58_experiment_run"
+    last_training_output_dir: "./output/2026-08-09_15-59-05_NCA_experiment"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -50,8 +50,9 @@ test:
 
 model:
     name: "standard_nca"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca
-    check_point_path: None
+    check_point_path: None  # "./output/2026-07-08_22-07-08_experiment_run" 
     # "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
+    # "./output/X/best_model.pth" 
     # None 
     
     kwargs: 
@@ -68,6 +69,7 @@ model:
         latent_dim: 1014  # 128, 256, 512, 1024
         vae_using_nca: True
         lambda_center: 1.5
+        latent_film_time_activated: True
         nca_latent_path: "./output/2026-07-29_09-00-40_AE_improved_upsampling_diversity_l1_loss"
 
 

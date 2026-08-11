@@ -93,7 +93,7 @@ Checking the results do:
 1. Open Anaconda Prompt
 2. Start env and tensorboard
     ```bash
-    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-28_02-07-07_AE_first_try\logs"
+    conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-08-03_20-10-17_NCA_experiment\logs"
     ```
 
 <!--
@@ -160,6 +160,7 @@ Standard Values are:
 
 > Most models already reached a convergence/stagnation at 50 epochs.
 
+<!--
 
 | Architecture | Balanced Accuracy | Addition | Converged |
 |---|---|---|---|
@@ -188,7 +189,65 @@ Standard Values are:
 
 > Converged is only if the slope in the last 15 epochs is above 0.001. This still can mean that the model is already converged.
 
+-->
 
+
+| Architecture | Balanced Accuracy | Precision | Recall |  F1 | Addition  |
+|---|---|---|---|---|
+| NCA  | 0.2446 | 0.58 | 0.36 | 0.44 | - hidden_channels: 16<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 |
+| NCA |  | - hidden_channels: 16<br>- steps: 64<br>- update_blocks: 2<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 28.89 | - hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | False |
+| NCA | 22.41 | - hidden_channels: 8<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 27.14 | - hidden_channels: 8<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 20.81 | - hidden_channels: 4<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 25.09 | - hidden_channels: 8<br>- steps: 4<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 26.48 | - hidden_channels: 8<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | False |
+| NCA | 27.30 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2<br>Hint: Changed something small internally with the dropout. | False |
+| NCA | 23.87 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 21.71 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "tanh"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 24.98 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "learnable"<br>- dropout: 0.2 | False |
+| NCA | 24.13 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "pretrained"<br>- dropout: 0.2 | False |
+| NCA | 22.28 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "learnable"<br>- dropout: 0.5 | True |
+
+
+| Conv AutoEncoder | 0.2734 | 0.56 | 0.42 | 0.47 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: false<br>- lambda_diversity_loss: 0.01 |   <!--2026-07-28_10-16-56_AE_improved_upsampling_diversity_l1_loss-->
+| Conv AutoEncoder | 0.3068 | 0.57 | 0.42 | 0.47 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: false<br>- lambda_diversity_loss: 1.5 |   <!--2026-07-29_09-00-40_AE_improved_upsampling_diversity_l1_loss-->
+| Conv AutoEncoder with NCA | 0.1093 | 0.18 | 0.13 | 0.12 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: true<br>- lambda_diversity_loss: 1.5 <br>Using NCA as Feature-Refinement after backbone.<br>- hidden_channels: encoder-out-channels<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "tanh"<br>perception_filter: "learnable"<br>- dropout: 0.1 |   <!--2026-07-30_12-44-57_AE_improved_upsampling_diversity_l1_loss_NCA-->
+| AlexNet | 0.3034 | 0.59 | 0.41 | 0.47 | - epochs: 100<br>- lr: 0.0005 |   <!--2026-07-31_18-34-16_AlexNet_run-->
+| AlexNet with NCA | 0.2564 | 0.53 | 0.39 | 0.45 |  NCA with AlexNet as Backbone. 75 epochs, because first trained backbone before training NCA head. |   <!--2026-08-01_13-13-14_AlexNet_run_NCA-->
+| NCA | 0.1714 | 0.68 | 0.40 | 0.48 | -epochs: 50<br>- hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2<br>- lr: 0.0005 (from 0.001)<br>- With Latent Space Update Enhancement (FiLM) |   <!--2026-08-02_14-56-57_NCA_with_FiLM-->
+| NCA | 0.3570 | 0.65 | 0.36 | 0.45 | -epochs: 50<br>- hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2<br>- lr: 0.0005 (from 0.001)<br>- With Latent Space Update Enhancement (FiLM) |   <!--2026-08-03_20-10-17_NCA_experiment-->
+| NCA | 0.3939 | 0.68 | 0.33 | 0.43 | -epochs: 50<br>- hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2<br>- With Latent Space Update Enhancement (FiLM) |   <!--2026-08-04_07-56-30_NCA_experiment_greater_loss-->
+| NCA | 0.3938 | 0.69 | 0.42 | 0.49 | -epochs: 50<br>- hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2<br>- With Latent Space Update Enhancement (FiLM) |   <!--2026-08-04_18-54-47_NCA_experiment-->
+| NCA | 0.2893 | 0.65 | 0.41 | 0.48 | -epochs: 50<br>- hidden_channels: 64<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2<br>- With Latent Space Update Enhancement (FiLM) | <!--2026-08-05_08-33-45_NCA_experiment-->
+| NCA | 0.2685 | 0.62 | 0.41 | 0.48 | -epochs: 100<br>- hidden_channels: 64<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2<br>- With Latent Space Update Enhancement (FiLM) | <!--2026-08-06_14-02-19_NCA_experiment-->
+
+<!--
+| NCA  |  | - hidden_channels: 16<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 |
+| NCA | 24.23  | - hidden_channels: 16<br>- steps: 64<br>- update_blocks: 2<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 28.89 | - hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | False |
+| NCA | 22.41 | - hidden_channels: 8<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 27.14 | - hidden_channels: 8<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 20.81 | - hidden_channels: 4<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 25.09 | - hidden_channels: 8<br>- steps: 4<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 26.48 | - hidden_channels: 8<br>- steps: 64<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2 | False |
+| NCA | 27.30 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "sobel"<br>- dropout: 0.2<br>Hint: Changed something small internally with the dropout. | False |
+| NCA | 23.87 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 21.71 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "tanh"<br>perception_filter: "sobel"<br>- dropout: 0.2 | True |
+| NCA | 24.98 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "learnable"<br>- dropout: 0.2 | False |
+| NCA | 24.13 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "pretrained"<br>- dropout: 0.2 | False |
+| NCA | 22.28 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "learnable"<br>- dropout: 0.5 | True |
+| ConvAE | 45.12 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: false<br>- lambda_diversity_loss: 1.5 | True |
+| ConvAE | 39.36 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: true<br>- lambda_diversity_loss: 1.5 <br>Using NCA as Feature-Refinement after backbone.<br>- hidden_channels: encoder-out-channels<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "tanh"<br>perception_filter: "learnable"<br>- dropout: 0.1 | True |
+| AlexNet | 43.09 |  | True |
+| AlexNet-NCA | 48.03 | NCA with AlexNet as Backbone. 75 epochs, because first trained backbone before training NCA head. | True |
+| NCA with Latent-FiLM | 24.63 | NCA update-steps multiply and add context from latent-space feed through a MLP. | False |
+| NCA |  | - hidden_channels: 16<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2 | ? |
+| NCA |  | - hidden_channels: 64<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2 | ? |
+| NCA |  | -epochs: 100<br>- hidden_channels: 64<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "sigmoid"<br>perception_filter: "learnable"<br>- dropout: 0.2 | ? |
+
+> get right NCA architecture via git!!!
+-->
 
 <br><br>
 

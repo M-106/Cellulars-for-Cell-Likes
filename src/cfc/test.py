@@ -1,8 +1,9 @@
-# -------------
+# ------------
 # > Imports <
-# -------------
+# ------------
 import os
 import shutil
+import inspect
 
 import torch
 
@@ -10,7 +11,8 @@ from tqdm import tqdm
 
 from cfc.utils.metrics import calculate_isic_metrics, get_used_label_names
 from cfc.utils.data import get_data
-from cfc.model.model_loading import get_model
+from cfc.model.model_loading import get_model, is_ae
+from cfc.utils.config import load_config
 
 
 
@@ -27,7 +29,11 @@ def evaluate(model, data_loader, device):
         for inputs, labels, score_weight, validation_weight in tqdm(data_loader, total=len(data_loader), desc="Test Epoch"):
             inputs, labels = inputs.to(device), labels.to(device)
 
-            outputs = model(inputs)
+            if "classify" in inspect.signature(model.forward).parameters:
+                outputs = model(inputs, classify=True)
+            else:
+                outputs = model(inputs)
+            
             _, preds = torch.max(outputs, 1)
 
             all_predictions.extend(preds.cpu().numpy())
@@ -40,12 +46,13 @@ def evaluate(model, data_loader, device):
 
 
 
-def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
+def test(model_name, model_kwargs, checkpoint_path, data_path, batch_size, output_dir):
     """
     Test a model on a specified dataset.
 
     Args:
         model_name (str): Name of the model to test.
+        model_kwargs (dict): Arguments for the model.
         checkpoint_path (str): Path to the model checkpoint to use.
         data_path (str): Path to the dataset to use.
         batch_size (int): Batch size for testing.
@@ -65,8 +72,15 @@ def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
     )
 
     # get model
-    model = get_model(model_name, num_classes=len(test_data.dataset.class_names), checkpoint_path=checkpoint_path)
+    num_classes = len(test_data.dataset.class_names)
+    is_autoencoder_or_vae = model_name.lower() in ["vae", "convvae", "ae", "convae"]
+    vae_using_nca = model_kwargs["vae_using_nca"] if "vae_using_nca" in model_kwargs else False 
+    model = get_model(model_name, num_classes=num_classes, checkpoint_path=checkpoint_path, **model_kwargs)
     model.to(device)
+    vae_is_latent_training = False
+    is_autoencoder_class_not_vae = is_ae(model)
+    latent_dim = model_kwargs["latent_dim"] if "latent_dim" in model_kwargs else -1
+    lambda_center = model_kwargs["lambda_center"] if "lambda_center" in model_kwargs else 0.0
 
     metrics = evaluate(model, test_data, device)
 
@@ -79,6 +93,8 @@ def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
         f.write(f"  - detailed_report:\n{metrics["detailed_report"]}\n")
         
         # f.write(f"Test Loss: {loss:.4f}\n")
+
+    print(f"Saved test results under: '{f'{output_dir}/test_summary.txt'}'")
 
 
 
@@ -94,22 +110,28 @@ def test(model_name, checkpoint_path, data_path, batch_size, output_dir):
 
 def main(config):
 
+    checkpoint_path = os.path.join(config.model.check_point_path, "best_model.pth")
+    origin_config_path = os.path.join(config.model.check_point_path, "config.yaml")
+    origin_config = load_config(origin_config_path)
+
     # extract configs
-    model_name = config.model.name
     data_path = config.data.path
     batch_size = config.test.batch_size
     output_dir = config.test.output_dir
-    checkpoint_path = config.model.check_point_path
+    model_name = origin_config.model.name
+    model_kwargs = origin_config.model.kwargs
+    exp_name = origin_config.train.exp_name
 
     # create exp output folder
     exp_name = os.path.split(os.path.dirname(checkpoint_path))[-1]  # FIXME: top dir ok? get exp name in this way?
-    output_dir = f"{output_dir}/test_{exp_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    shutil.rmtree(output_dir)
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = f"{output_dir}/{exp_name}"
+    # os.makedirs(output_dir, exist_ok=True)
+    # shutil.rmtree(output_dir)
+    # os.makedirs(output_dir, exist_ok=True)
     
     test(
         model_name=model_name,
+        model_kwargs=model_kwargs,
         checkpoint_path=checkpoint_path,
         data_path=data_path,
         batch_size=batch_size,

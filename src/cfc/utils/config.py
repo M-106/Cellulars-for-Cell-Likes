@@ -2,7 +2,7 @@
 # > Import <
 # ----------
 import json
-from typing import Union
+from typing import Union, Optional
 from pydantic import BaseModel
 import yaml
 
@@ -36,6 +36,7 @@ def load_config(path):
 
         with open(path) as file_:
             data = yaml.safe_load(file_)
+
         return Config(**data)
 
 def save_config(config, path):
@@ -50,12 +51,12 @@ class TrainConfig(BaseModel):
     learning_rate: float
     weight_decay: float
     criterion: str
-    vae_criterion_beta: float
-    vae_criterion_use_smooth_beta: bool
-    vae_criterion_use_smooth_beta_start_value: float
+    vae_criterion_beta: Optional[float] = 0.0
+    vae_criterion_use_smooth_beta: Optional[bool] = False
+    vae_criterion_use_smooth_beta_start_value: Optional[float] = 0.0
     optimizer: str
     scheduler: Union[str, None]
-    warmup_epochs: int
+    warmup_epochs: Optional[int] = 0
     output_dir: str
     exp_name: str
     used_train_samples: int
