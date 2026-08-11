@@ -110,9 +110,15 @@ def test(model_name, model_kwargs, checkpoint_path, data_path, batch_size, outpu
 
 def main(config):
 
-    checkpoint_path = os.path.join(config.model.check_point_path, "best_model.pth")
-    origin_config_path = os.path.join(config.model.check_point_path, "config.yaml")
-    origin_config = load_config(origin_config_path)
+    if config.model.name == "random" and (config.model.check_point_path is None or config.model.check_point_path == "None"):
+        is_random_model = True
+        origin_config = config
+        checkpoint_path=None
+    else:
+        is_random_model = False
+        checkpoint_path = os.path.join(config.model.check_point_path, "best_model.pth")
+        origin_config_path = os.path.join(config.model.check_point_path, "config.yaml")
+        origin_config = load_config(origin_config_path)
 
     # extract configs
     data_path = config.data.path
@@ -123,9 +129,12 @@ def main(config):
     exp_name = origin_config.train.exp_name
 
     # create exp output folder
-    exp_name = os.path.split(os.path.dirname(checkpoint_path))[-1]  # FIXME: top dir ok? get exp name in this way?
+    if is_random_model:
+        exp_name = "./output/random"
+    else:
+        exp_name = os.path.split(os.path.dirname(checkpoint_path))[-1]  # FIXME: top dir ok? get exp name in this way?
     output_dir = f"{output_dir}/{exp_name}"
-    # os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     # shutil.rmtree(output_dir)
     # os.makedirs(output_dir, exist_ok=True)
     

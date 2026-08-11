@@ -210,6 +210,7 @@ Standard Values are:
 | NCA | 22.28 | - hidden_channels: 16<br>- steps: 16<br>- update_blocks: 1<br>- final_update_block_activation: "leaky_relu"<br>perception_filter: "learnable"<br>- dropout: 0.5 | True |
 
 
+| Random | 0.1114 | 0.12 | 0.11 | 0.09 |  |
 | Conv AutoEncoder | 0.2734 | 0.56 | 0.42 | 0.47 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: false<br>- lambda_diversity_loss: 0.01 |   <!--2026-07-28_10-16-56_AE_improved_upsampling_diversity_l1_loss-->
 | Conv AutoEncoder | 0.3068 | 0.57 | 0.42 | 0.47 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: false<br>- lambda_diversity_loss: 1.5 |   <!--2026-07-29_09-00-40_AE_improved_upsampling_diversity_l1_loss-->
 | Conv AutoEncoder with NCA | 0.1093 | 0.18 | 0.13 | 0.12 | - epochs: 100 (50 latent, 50 class head)<br>- latent_dim: 1014<br>- vae_using_nca: true<br>- lambda_diversity_loss: 1.5 <br>Using NCA as Feature-Refinement after backbone.<br>- hidden_channels: encoder-out-channels<br>- steps: 8<br>- update_blocks: 1<br>- final_update_block_activation: "tanh"<br>perception_filter: "learnable"<br>- dropout: 0.1 |   <!--2026-07-30_12-44-57_AE_improved_upsampling_diversity_l1_loss_NCA-->

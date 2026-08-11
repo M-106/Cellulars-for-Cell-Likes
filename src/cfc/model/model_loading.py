@@ -88,6 +88,10 @@ def get_model(model_name, num_classes, checkpoint_path=None, **kwargs):
             num_classes=num_classes, 
             **kwargs
         )
+
+    elif model_name.lower() == "random":
+        from cfc.model.random import RandomClassifier
+        model = RandomClassifier(num_classes=num_classes, **kwargs)
     
     else:
         raise ValueError(f"Model {model_name} not supported.")
