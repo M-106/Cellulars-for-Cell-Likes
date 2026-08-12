@@ -82,6 +82,7 @@ data:
     path: "C:/Users/Shadow/data/ISIC-2019_Skin_Lesion"
     # "F:/data/ISIC-2019_Skin_Lesion"
     # name: "isic-2019"
+    balance_classes: True
 
 
 

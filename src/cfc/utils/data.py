@@ -22,7 +22,13 @@ from sklearn.model_selection import train_test_split
 # > Dataset <
 # -----------
 class ISIC2019Dataset(Dataset):
-    def __init__(self, data_path, partition="val", transform=None, used_samples=-1):
+    def __init__(self, 
+                 data_path, 
+                 partition="val", 
+                 transform=None, 
+                 used_samples=-1,
+                 balance_classes=False,
+                 random_state=42):
         """
         Random split with seed for reproducability. Stratified split to maintain class distribution.
 
@@ -62,13 +68,18 @@ class ISIC2019Dataset(Dataset):
                 self.labels, 
                 test_size=0.2, 
                 stratify=self.labels["label"], 
-                random_state=42
+                random_state=random_state
             )
 
+            # if partition == "train":
+            #     self.labels = train_df
+            # else:
+            #     self.labels = val_df
+
             if partition == "train":
-                self.labels = train_df
+                self.labels = train_df.reset_index(drop=True)
             else:
-                self.labels = val_df
+                self.labels = val_df.reset_index(drop=True)
 
             # print(self.labels.head())
             # print("Columns:", self.labels.columns)
@@ -82,16 +93,37 @@ class ISIC2019Dataset(Dataset):
             # print(f"Exists: {os.path.exists(file_path)}")
             # print(f"Size: {os.path.getsize(file_path)} Bytes")
             
-            self.labels = pd.read_csv(file_path)
-            self.labels["label"] = (
-                self.labels[self.class_names]
+            labels_df = pd.read_csv(file_path)
+            labels_df["label"] = (
+                labels_df[self.class_names]
                 .idxmax(axis=1)
                 .map(self.class_to_idx)
             )
+            self.labels = labels_df.reset_index(drop=True)
 
-        # filter/reduce
-        if used_samples > 0:
-            self.labels = self.labels.sample(n=used_samples)
+        # Class Balancing / Undersampling Logic
+        if balance_classes:
+            # Find the sample count of the smallest class
+            min_class_count = self.labels["label"].value_counts().min()
+
+            # If used_samples is set, cap the per-class limit accordingly
+            if used_samples > 0:
+                samples_per_class = min(min_class_count, used_samples // len(self.class_names))
+            else:
+                samples_per_class = min_class_count
+
+            # Downsample each class to `samples_per_class` entries
+            self.labels = (
+                self.labels.groupby("label", group_keys=False)
+                .sample(n=samples_per_class, random_state=random_state)
+                .reset_index(drop=True)
+            )
+            print(f"Achieve Balanced Class-Samples by downsampling to {samples_per_class} samples per class.")
+        elif used_samples > 0:
+            # Simple random reduction without balancing
+            self.labels = self.labels.sample(n=used_samples, random_state=random_state).reset_index(drop=True)
+        else:
+            self.labels = self.labels.reset_index(drop=True)
 
     def __len__(self):
         return len(self.labels)
@@ -110,6 +142,7 @@ class ISIC2019Dataset(Dataset):
 
         col_idx = self.labels.columns.get_loc('label')
         label = self.labels.iloc[idx, col_idx]
+        # label = self.labels["label"].iloc[idx]
         # label = self.labels.at[idx, 'label']
         label = torch.tensor(label, dtype=torch.long)
         # label = torch.tensor(self.class_to_idx[label], dtype=torch.long)
@@ -130,7 +163,8 @@ def get_data(
         batch_size=16, 
         partition="val",
         shuffle=False,
-        used_samples=-1
+        used_samples=-1,
+        balance_classes=False
     ):
     
 
@@ -141,7 +175,7 @@ def get_data(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations, used_samples=used_samples)
+    dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations, used_samples=used_samples, balance_classes=balance_classes)
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)  # num_workers=0
 

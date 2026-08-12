@@ -167,6 +167,7 @@ def train(
         model_name, 
         model_kwargs,
         data_path, 
+        balance_classes,
         num_epochs, 
         batch_size, 
         learning_rate, 
@@ -191,6 +192,7 @@ def train(
     Args:
         model_name (str): Name of the model to train.
         data_path (str): Path to the dataset.
+        balance_classes (bool): Whether the dataset should downsample to achieve balanced class-samples.
         num_epochs (int): Number of epochs to train for.
         batch_size (int): Batch size for training.
         learning_rate (float): Learning rate for the optimizer.
@@ -218,14 +220,16 @@ def train(
         batch_size=batch_size, 
         partition="train",
         shuffle=True,
-        used_samples=used_train_samples
+        used_samples=used_train_samples,
+        balance_classes=balance_classes
     )
     val_data = get_data(
         data_path=data_path, 
         batch_size=batch_size, 
         partition="val",
         shuffle=False,
-        used_samples=used_val_samples
+        used_samples=used_val_samples,
+        balance_classes=balance_classes
     )
 
     # get model
@@ -426,6 +430,7 @@ def main(config):
     model_name = config.model.name
     model_kwargs = config.model.kwargs
     data_path = config.data.path
+    balance_classes = config.data.balance_classes
     num_epochs = config.train.num_epochs
     batch_size = config.train.batch_size
     learning_rate = config.train.learning_rate
@@ -462,6 +467,7 @@ def main(config):
         model_name=model_name,
         model_kwargs=model_kwargs,
         data_path=data_path,
+        balance_classes=balance_classes,
         num_epochs=num_epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
