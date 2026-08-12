@@ -76,7 +76,10 @@ Applying neural cellular automates onto skin cancer image data for classificatio
 - AlexNet Inspired Net
 - AlexNet Inspired + NCA (on Backbone Feature Space)
 - AutoEncoder + NCA
-- NCA + Latent-Space (global information) -> via MLP add
+- NCA + Latent-Space (global information) -> via MLP add (FiLM = Feature-wise linear modulations)
+- NCA + Latent-Space but with Timestep as additional Input for MLP (currently)
+- NCA + Global Cross-Attention?
+- ResNet with Class Head also as Baseline for comparison
 - NCA + Input-Skip-Connection (?)
 - NCA + Global State as additional Input?
 

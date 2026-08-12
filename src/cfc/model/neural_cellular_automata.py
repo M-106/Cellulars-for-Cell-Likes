@@ -86,6 +86,107 @@ def handle_optional_list_param(value, dtype, goal_len, apply_func=lambda x:x):
     return final_value
 
 
+
+
+# --------------------
+# > Global Attention <
+# --------------------
+class GlobalCrossAttention(nn.Module):
+    def __init__(self, channels, latent_dim):
+        super().__init__()
+        self.q = nn.Conv2d(channels, channels, 1)
+        self.k = nn.Linear(latent_dim, channels)
+        self.v = nn.Linear(latent_dim, channels)
+        self.out_proj = nn.Conv2d(channels, channels, 1)
+        
+        # Zero-initialize scale parameter so the block starts as identity (x + 0)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, z):
+        # x: (B, C, H, W), z: (B, latent_dim)
+        B, C, H, W = x.shape
+        
+        # Project queries, keys, and values
+        q = self.q(x).flatten(2).permute(0, 2, 1)  # (B, H*W, C)
+        k = self.k(z).unsqueeze(1)                # (B, 1, C)
+        v = self.v(z).unsqueeze(1)                # (B, 1, C)
+
+        # Dot-product attention scores
+        # (B, H*W, C) x (B, C, 1) -> (B, H*W, 1)
+        scores = torch.bmm(q, k.transpose(1, 2)) / (C ** 0.5)
+        attn = F.softmax(scores, dim=-1)           # Softmax across key dimension
+
+        # Aggregate values: (B, H*W, 1) x (B, 1, C) -> (B, H*W, C)
+        out = torch.bmm(attn, v)
+        out = out.permute(0, 2, 1).view(B, C, H, W)
+        out = self.out_proj(out)
+
+        # Residual connection with zero-gated scale
+        return x + self.gamma * out
+
+
+
+# class ImageCrossAttention(nn.Module):
+#     def __init__(self, channels, img_channels=3):
+#         super().__init__()
+#         self.q = nn.Conv2d(channels, channels, 1)
+#         # project rgb image on channel-size of of NCA-state
+#         self.k_proj = nn.Conv2d(img_channels, channels, 1)
+#         self.v_proj = nn.Conv2d(img_channels, channels, 1)
+        
+#         self.out_proj = nn.Conv2d(channels, channels, 1)
+#         self.gamma = nn.Parameter(torch.zeros(1))
+
+#     def forward(self, x, raw_img):
+#         # x: (B, C, H, W) -> NCA State
+#         # raw_img: (B, 3, H, W) -> Original Image
+#         B, C, H, W = x.shape
+        
+#         q = self.q(x).flatten(2).permute(0, 2, 1)              # (B, H*W, C)
+#         k = self.k_proj(raw_img).flatten(2).permute(0, 2, 1)   # (B, H*W, C)
+#         v = self.v_proj(raw_img).flatten(2).permute(0, 2, 1)   # (B, H*W, C)
+
+#         # Full Spatial Attention: Every NCA-Cell looks at the same whole image
+#         scores = torch.bmm(q, k.transpose(1, 2)) / (C ** 0.5)  # (B, H*W, H*W)
+#         attn = F.softmax(scores, dim=-1)
+
+#         out = torch.bmm(attn, v).permute(0, 2, 1).view(B, C, H, W)
+
+#         return x + self.gamma * self.out_proj(out)
+
+class ImageCrossAttention(nn.Module):
+    def __init__(self, channels, img_channels=3, downsample_size=(56, 56)):
+        super().__init__()
+        self.pool = nn.AdaptiveAvgPool2d(downsample_size)
+        
+        self.q = nn.Conv2d(channels, channels, 1)
+        self.k_proj = nn.Conv2d(img_channels, channels, 1)
+        self.v_proj = nn.Conv2d(img_channels, channels, 1)
+        
+        self.out_proj = nn.Conv2d(channels, channels, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, raw_img):
+        B, C, H, W = x.shape
+        
+        img_small = self.pool(raw_img)
+        
+        # PyTorch SDPA expects Shape: (B, num_heads, sequence_length, head_dim)
+        # We only use 1 head
+        q = self.q(x).flatten(2).permute(0, 2, 1).unsqueeze(1)               # (B, 1, H*W, C)
+        k = self.k_proj(img_small).flatten(2).permute(0, 2, 1).unsqueeze(1)  # (B, 1, K_len, C)
+        v = self.v_proj(img_small).flatten(2).permute(0, 2, 1).unsqueeze(1)  # (B, 1, K_len, C)
+
+        # PyTorch Fused SDPA (Extreme fast & memory efficient)
+        out = F.scaled_dot_product_attention(q, k, v)                        # (B, 1, H*W, C)
+
+        # Reshape back to (B, C, H, W)
+        out = out.squeeze(1).permute(0, 2, 1).view(B, C, H, W)
+
+        return x + self.gamma * self.out_proj(out)
+
+    
+
 # -------------
 # > NCA Model <
 # -------------
@@ -271,6 +372,9 @@ class NeuralCellularAutomata(torch.nn.Module):
                  input_width=224,
                  input_height=224,
                  latent_film_time_activated=False,
+                 use_film=False,
+                 use_global_attn_context=False,
+                 use_img_global_attn=True,
                  **kwargs):
         super().__init__()
 
@@ -286,6 +390,16 @@ class NeuralCellularAutomata(torch.nn.Module):
         self.latent_model = latent_model
         if self.latent_model is not None:
             self.latent_model.requires_grad_(False)
+        self.use_film = use_film
+        self.film_time_based = latent_film_time_activated
+        self.use_global_attn_context = use_global_attn_context
+        self.use_img_global_attn = use_img_global_attn
+
+        if self.use_global_attn_context and not self.use_img_global_attn and self.latent_model is None:
+            raise ValueError("If using global context with latent context, you must also providea latent model.")
+
+        if self.use_film and self.latent_model is None:
+            raise ValueError("If using FiLM (Feature-wise Linear Modulations) you have to provide a latent model!")
 
         # Perception -> already give every cell the information of their enviornment, via additional channels
         self.perception = Perception(hidden_channels, filter=perception_filter)
@@ -342,19 +456,26 @@ class NeuralCellularAutomata(torch.nn.Module):
                 latent_dim = dummy_out.view(1, -1).shape[1]
 
             # Creates gamma and beta (2 * hidden_channels)
-            self.film_time_based = latent_film_time_activated
-            if self.film_time_based:
-                self.film_generator = StepAwareFiLM(
-                    latent_dim=latent_dim, 
-                    hidden_channels=hidden_channels, 
-                    max_steps=steps
-                )
+            if self.use_film:
+                if self.film_time_based:
+                    self.film_generator = StepAwareFiLM(
+                        latent_dim=latent_dim, 
+                        hidden_channels=hidden_channels, 
+                        max_steps=steps
+                    )
+                else:
+                    self.film_generator = nn.Sequential(
+                        nn.Linear(latent_dim, 256),
+                        nn.LeakyReLU(0.2),
+                        nn.Linear(256, 2 * hidden_channels)
+                    )
+
+        # Global Context Attention Net
+        if self.use_global_attn_context:
+            if self.use_img_global_attn:
+                self.global_attn = ImageCrossAttention(hidden_channels, img_channels=input_channels)
             else:
-                self.film_generator = nn.Sequential(
-                    nn.Linear(latent_dim, 256),
-                    nn.LeakyReLU(0.2),
-                    nn.Linear(256, 2 * hidden_channels)
-                )
+                self.global_attn = GlobalCrossAttention(hidden_channels, latent_dim)
 
         # Classification Head -> hidden state to class prediction
         self.classification_head = nn.Sequential(
@@ -371,7 +492,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         Extracts the Latent-Vector and creates gamma/beta.
         """
-        if self.latent_model is None:
+        if self.latent_model is None or self.use_film == False:
             return None, None
             
         # call latent_model
@@ -389,13 +510,20 @@ class NeuralCellularAutomata(torch.nn.Module):
         return gamma, beta
 
 
-    def step(self, x, gamma=None, beta=None):
+    def step(self, x, gamma=None, beta=None, raw_img=None, z=None):
         perception = self.perception(x)
         # update = self.update_net(perception)
 
         h = self.first_update_block(perception, gamma=gamma, beta=beta)
         for block in self.middle_blocks:
             h = block(h, gamma=gamma, beta=beta)
+
+        if self.use_global_attn_context:
+            if self.use_img_global_attn:
+                h = self.global_attn(h, raw_img)
+            else:
+                h = self.global_attn(h, z)
+
         update = self.final_update_block(h, gamma=gamma, beta=beta)
 
         # return x + update
@@ -416,52 +544,68 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         Like forward but returns the last hidden state instead of the logits.
         """
-        if self.film_time_based:  
-            # call latent_model
-            z = self.latent_model(x, classify=False)[1]
+        if self.use_film:
+            if self.film_time_based:  
+                # call latent_model
+                z = self.latent_model(x, classify=False)[1]
+            else:
+                gamma, beta = self._get_film_params(x)
         else:
-            gamma, beta = self._get_film_params(x)
+            z = None
+            gamma = None
+            beta = None
+
+        if self.use_global_attn_context and not self.use_img_global_attn:
+            z = self.latent_model(x, classify=False)[1]
 
         # project input image to hidden state
-        x = self.input_projection_net(x)
+        h = self.input_projection_net(x)
 
         # iterative updates of the hidden state
         for t in range(self.steps):
-            if self.film_time_based:
+            if self.film_time_based and self.use_film:
                 step_tensor = torch.tensor(t, device=x.device)
                 gamma, beta = self.film_generator(z, step_tensor)
-            x = self.step(x, gamma=gamma, beta=beta)
+            h = self.step(h, gamma=gamma, beta=beta, raw_img=x, z=z)
 
-        return x  # return the 4D grid state: [B, C, H, W]
+        return h  # return the 4D grid state: [B, C, H, W]
     
 
     def forward(self, x):
-        # global modulation (if latent model exist)
-        if self.film_time_based:  
-            # call latent_model
-            z = self.latent_model(x, classify=False)[1]
+        # global modulation (if latent model exist) 
+        if self.use_film:
+            if self.film_time_based:  
+                # call latent_model
+                z = self.latent_model(x, classify=False)[1]
+            else:
+                gamma, beta = self._get_film_params(x)
         else:
-            gamma, beta = self._get_film_params(x)
+            z = None
+            gamma = None
+            beta = None
+
+        if self.use_global_attn_context and not self.use_img_global_attn:
+            z = self.latent_model(x, classify=False)[1]
 
         # project input image to hidden state
         # if self.classification_mode:
-        x = self.input_projection_net(x)
+        h = self.input_projection_net(x)
         # else:
         #     x = x.view(-1, self.hidden_channels, 1, 1)
 
         # iterative updates of the hidden state
         for t in range(self.steps):
-            if self.film_time_based:
+            if self.film_time_based and self.use_film:
                 step_tensor = torch.tensor(t, device=x.device)
                 gamma, beta = self.film_generator(z, step_tensor)
-            x = self.step(x, gamma=gamma, beta=beta)
+            h = self.step(h, gamma=gamma, beta=beta, raw_img=x, z=z)
 
         if self.classification_mode:
             # classify the final hidden state
-            logits = self.classification_head(x)
+            logits = self.classification_head(h)
             return logits
         else:
-           return x
+           return h
 
 
     def save_transition_sequence(self, x, save_path):
@@ -470,11 +614,19 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         x = x[0:1]
 
-        if self.film_time_based:  
-            # call latent_model
-            z = self.latent_model(x, classify=False)[1]
+        if self.use_film:
+            if self.film_time_based:  
+                # call latent_model
+                z = self.latent_model(x, classify=False)[1]
+            else:
+                gamma, beta = self._get_film_params(x)
         else:
-            gamma, beta = self._get_film_params(x)
+            z = None
+            gamma = None
+            beta = None
+
+        if self.use_global_attn_context and not self.use_img_global_attn:
+            z = self.latent_model(x, classify=False)[1]
 
         current_x = self.input_projection_net(x)
 
@@ -482,10 +634,10 @@ class NeuralCellularAutomata(torch.nn.Module):
         history.append(current_x.detach().cpu())
 
         for t in range(self.steps):
-            if self.film_time_based:
+            if self.film_time_based and self.use_film:
                 step_tensor = torch.tensor(t, device=current_x.device)
                 gamma, beta = self.film_generator(z, step_tensor)
-            current_x = self.step(current_x, gamma=gamma, beta=beta)
+            current_x = self.step(current_x, gamma=gamma, beta=beta, raw_img=x, z=z)
             history.append(current_x.detach().cpu())
 
         # apply PCA
