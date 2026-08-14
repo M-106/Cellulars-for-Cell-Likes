@@ -168,6 +168,7 @@ def train(
         model_kwargs,
         data_path, 
         balance_classes,
+        augmentation,
         num_epochs, 
         batch_size, 
         learning_rate, 
@@ -193,6 +194,7 @@ def train(
         model_name (str): Name of the model to train.
         data_path (str): Path to the dataset.
         balance_classes (bool): Whether the dataset should downsample to achieve balanced class-samples.
+        augmentation (bool): Whether to use augmentation.
         num_epochs (int): Number of epochs to train for.
         batch_size (int): Batch size for training.
         learning_rate (float): Learning rate for the optimizer.
@@ -221,7 +223,8 @@ def train(
         partition="train",
         shuffle=True,
         used_samples=used_train_samples,
-        balance_classes=balance_classes
+        balance_classes=balance_classes,
+        augmentation=augmentation
     )
     val_data = get_data(
         data_path=data_path, 
@@ -229,8 +232,11 @@ def train(
         partition="val",
         shuffle=False,
         used_samples=used_val_samples,
-        balance_classes=balance_classes
+        balance_classes=balance_classes,
+        augmentation=False
     )
+    # 1528 if using balanced classes
+    # num_classes = 9
 
     # get model
     num_classes = len(train_data.dataset.class_names)
@@ -431,6 +437,7 @@ def main(config):
     model_kwargs = config.model.kwargs
     data_path = config.data.path
     balance_classes = config.data.balance_classes
+    augmentation = config.data.augmentation
     num_epochs = config.train.num_epochs
     batch_size = config.train.batch_size
     learning_rate = config.train.learning_rate
@@ -468,6 +475,7 @@ def main(config):
         model_kwargs=model_kwargs,
         data_path=data_path,
         balance_classes=balance_classes,
+        augmentation=augmentation,
         num_epochs=num_epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,

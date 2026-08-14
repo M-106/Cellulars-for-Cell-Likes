@@ -35,16 +35,20 @@ def measure_nca_stability(model, input_img):
     with torch.no_grad():
         if not isinstance(model, NeuralCellularAutomata):
             if hasattr(model, "encoder"):
-                input_img = model.encoder(input_img)
+                x = model.encoder(input_img)
             else:
                 input_img = model.backbone(input_img, classify=False)
             model = model.nca
+
+        z, gamma, beta = model._preprocess_for_steps(x=input_img)
+            
         x = model.input_projection_net(input_img)
 
         total_change = 0.0
-        for _ in range(model.steps):
+        for t in range(model.steps):
             x_prev = x
-            x = model.step(x)
+            gamma, beta = model._get_time_film_params(timestep=t, latent_z=z, gamma=gamma, beta=beta, device=x.device)
+            x = model.step(x, gamma=gamma, beta=beta, raw_img=input_img, z=z)
 
             change = torch.norm(x - x_prev, p=2) / x.numel()
             total_change += change.item()
@@ -487,6 +491,23 @@ class NeuralCellularAutomata(torch.nn.Module):
 
         self.apply(init_weights)  # initialize weights of the model near 0
 
+    def _preprocess_for_steps(self, x):
+        if self.use_film:
+            if self.film_time_based:  
+                # call latent_model
+                z = self.latent_model(x, classify=False)[1]
+            else:
+                gamma, beta = self._get_film_params(x)
+                z = None
+        else:
+            z = None
+            gamma = None
+            beta = None
+
+        if self.use_global_attn_context and not self.use_img_global_attn:
+            z = self.latent_model(x, classify=False)[1]
+
+        return z, gamma, beta
 
     def _get_film_params(self, raw_img):
         """
@@ -509,6 +530,12 @@ class NeuralCellularAutomata(torch.nn.Module):
 
         return gamma, beta
 
+    def _get_time_film_params(self, timestep, latent_z, gamma, beta, device):
+        if self.film_time_based and self.use_film:
+            step_tensor = torch.tensor(timestep, device=device)
+            gamma, beta = self.film_generator(latent_z, step_tensor)
+
+        return gamma, beta
 
     def step(self, x, gamma=None, beta=None, raw_img=None, z=None):
         perception = self.perception(x)
@@ -544,28 +571,15 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         Like forward but returns the last hidden state instead of the logits.
         """
-        if self.use_film:
-            if self.film_time_based:  
-                # call latent_model
-                z = self.latent_model(x, classify=False)[1]
-            else:
-                gamma, beta = self._get_film_params(x)
-        else:
-            z = None
-            gamma = None
-            beta = None
 
-        if self.use_global_attn_context and not self.use_img_global_attn:
-            z = self.latent_model(x, classify=False)[1]
+        z, gamma, beta = self._preprocess_for_steps(x=x)
 
         # project input image to hidden state
         h = self.input_projection_net(x)
 
         # iterative updates of the hidden state
         for t in range(self.steps):
-            if self.film_time_based and self.use_film:
-                step_tensor = torch.tensor(t, device=x.device)
-                gamma, beta = self.film_generator(z, step_tensor)
+            gamma, beta = self._get_time_film_params(timestep=t, latent_z=z, gamma=gamma, beta=beta, device=x.device)
             h = self.step(h, gamma=gamma, beta=beta, raw_img=x, z=z)
 
         return h  # return the 4D grid state: [B, C, H, W]
@@ -573,19 +587,7 @@ class NeuralCellularAutomata(torch.nn.Module):
 
     def forward(self, x):
         # global modulation (if latent model exist) 
-        if self.use_film:
-            if self.film_time_based:  
-                # call latent_model
-                z = self.latent_model(x, classify=False)[1]
-            else:
-                gamma, beta = self._get_film_params(x)
-        else:
-            z = None
-            gamma = None
-            beta = None
-
-        if self.use_global_attn_context and not self.use_img_global_attn:
-            z = self.latent_model(x, classify=False)[1]
+        z, gamma, beta = self._preprocess_for_steps(x=x)
 
         # project input image to hidden state
         # if self.classification_mode:
@@ -595,9 +597,7 @@ class NeuralCellularAutomata(torch.nn.Module):
 
         # iterative updates of the hidden state
         for t in range(self.steps):
-            if self.film_time_based and self.use_film:
-                step_tensor = torch.tensor(t, device=x.device)
-                gamma, beta = self.film_generator(z, step_tensor)
+            gamma, beta = self._get_time_film_params(timestep=t, latent_z=z, gamma=gamma, beta=beta, device=x.device)
             h = self.step(h, gamma=gamma, beta=beta, raw_img=x, z=z)
 
         if self.classification_mode:
@@ -614,19 +614,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         """
         x = x[0:1]
 
-        if self.use_film:
-            if self.film_time_based:  
-                # call latent_model
-                z = self.latent_model(x, classify=False)[1]
-            else:
-                gamma, beta = self._get_film_params(x)
-        else:
-            z = None
-            gamma = None
-            beta = None
-
-        if self.use_global_attn_context and not self.use_img_global_attn:
-            z = self.latent_model(x, classify=False)[1]
+        z, gamma, beta = self._preprocess_for_steps(x=x)
 
         current_x = self.input_projection_net(x)
 
@@ -634,9 +622,7 @@ class NeuralCellularAutomata(torch.nn.Module):
         history.append(current_x.detach().cpu())
 
         for t in range(self.steps):
-            if self.film_time_based and self.use_film:
-                step_tensor = torch.tensor(t, device=current_x.device)
-                gamma, beta = self.film_generator(z, step_tensor)
+            gamma, beta = self._get_time_film_params(timestep=t, latent_z=z, gamma=gamma, beta=beta, device=x.device)
             current_x = self.step(current_x, gamma=gamma, beta=beta, raw_img=x, z=z)
             history.append(current_x.detach().cpu())
 

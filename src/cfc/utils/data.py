@@ -164,16 +164,37 @@ def get_data(
         partition="val",
         shuffle=False,
         used_samples=-1,
-        balance_classes=False
+        balance_classes=False,
+        img_size=(224, 224),
+        augmentation=False
     ):
-    
 
-    # transformer
-    transformations = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),  # change type & (H, W, C) -> (C, H, W) & [0, 255] -> [0.0, 1.0]
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    # Standard-Normalization for Pretrained Models (e.g. ImageNet)
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
+    if partition == "train" and augmentation:
+        # Dynamic Augmentation for training
+        transformations = transforms.Compose([
+            transforms.Resize(img_size),
+            
+            # --- AUGMENTATIONs ---
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.5),
+            transforms.RandomRotation(degrees=180), # Hautläsionen haben keine feste Ausrichtung
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            # ----------------------
+            
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std)
+        ])
+    else:
+        # Only Preprocessing for Val/Test without Random-Components
+        transformations = transforms.Compose([
+            transforms.Resize(img_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std)
+        ])
 
     dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations, used_samples=used_samples, balance_classes=balance_classes)
 

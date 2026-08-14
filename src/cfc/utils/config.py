@@ -92,6 +92,7 @@ class ModelConfig(BaseModel):
 class DataConfig(BaseModel):
     path: str
     balance_classes: bool = False
+    augmentation: bool = False
 
 
 
