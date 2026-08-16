@@ -5,6 +5,9 @@ import os
 import shutil
 import inspect
 
+import numpy as np
+import pandas as pd
+
 import torch
 
 from tqdm import tqdm
@@ -16,17 +19,64 @@ from cfc.utils.config import load_config
 
 
 
+# ----------
+# > Helper <
+# ----------
+CLASS_NAMES = ["MEL", "NV", "BCC", "AK", "BKL", "DF", "VASC", "SCC", "UNK"]
+
+def save_isic_predictions(image_paths, preds, output_csv):
+
+    # if pytorch tensor -> convert to numpy
+    if hasattr(preds, "detach"):
+        preds = preds.detach().cpu().numpy()
+    elif isinstance(preds, list):
+        preds = np.array(preds)
+
+    # get only the image names
+    image_names = [os.path.basename(str(p)) for img_batch in image_paths for p in img_batch]
+
+    # Build DataFrame
+    df = pd.DataFrame(preds, columns=CLASS_NAMES)
+    df.insert(0, "image", image_names)
+
+    # Save CSV
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    df.to_csv(output_csv, index=False)
+    print(f"Saved predictions to {output_csv}")
+
+
+def reorder_batch_predictions(batch_preds, idx_to_class, target_classes):
+    """
+    Sorts a batch of predictions [batch_size, num_classes] 
+    in the order of target_classes.
+    """
+    if hasattr(batch_preds, "detach"):
+        batch_preds = batch_preds.detach().cpu().numpy()
+
+    # Mpa index of target class to the modeloutput-idx
+    class_to_idx = {v.lower(): k for k, v in idx_to_class.items()}
+    mapping = [class_to_idx[c.lower()] for c in target_classes]
+
+    # Re-order over col-indexing
+    return batch_preds[:, mapping]
+
+
+
 # -------------
 # > Test Loop <
 # -------------
-def evaluate(model, data_loader, device):
+def evaluate(model, data_loader, device, output_dir):
     model.eval()
+    all_paths = []
+    all_raw_predictions = []
     all_predictions = []
     all_labels = []
     weights = []
 
+    idx_to_class = data_loader.dataset.idx_to_class
+
     with torch.no_grad():
-        for inputs, labels, score_weight, validation_weight in tqdm(data_loader, total=len(data_loader), desc="Test Epoch"):
+        for inputs, labels, score_weight, validation_weight, img_path in tqdm(data_loader, total=len(data_loader), desc="Test Epoch"):
             inputs, labels = inputs.to(device), labels.to(device)
 
             if "classify" in inspect.signature(model.forward).parameters:
@@ -34,11 +84,31 @@ def evaluate(model, data_loader, device):
             else:
                 outputs = model(inputs)
             
+            # softmax / logits
+            raw_preds = torch.softmax(outputs, dim=1) if not torch.allclose(outputs.sum(dim=1), torch.tensor(1.0).to(device)) else outputs
             _, preds = torch.max(outputs, 1)
 
-            all_predictions.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+            # Re-ordering pro Batch
+            ordered_raw_preds = reorder_batch_predictions(
+                batch_preds=raw_preds, 
+                idx_to_class=idx_to_class, 
+                target_classes=CLASS_NAMES
+            )
+
+            all_paths.append(img_path)
+            all_raw_predictions.append(ordered_raw_preds)
+            all_predictions.extend(preds.detach().cpu().numpy())
+            all_labels.extend(labels.detach().cpu().numpy())
             weights.extend(score_weight)  # Assuming equal weights for each sample
+
+    # stack all predictions together into [N, 9]
+    all_raw_predictions = np.vstack(all_raw_predictions)
+    out_path_root, out_exp_name = os.path.split(output_dir)
+    save_isic_predictions(
+        image_paths=all_paths, 
+        preds=all_raw_predictions, 
+        output_csv=os.path.join(out_path_root, "isic_2019_preds", f"{out_exp_name}.csv")
+    )
 
     used_label_names = get_used_label_names(all_labels, all_predictions, idx_to_class=data_loader.dataset.idx_to_class)
     metrics = calculate_isic_metrics(all_predictions, all_labels, used_label_names, weights)
@@ -68,7 +138,8 @@ def test(model_name, model_kwargs, checkpoint_path, data_path, batch_size, outpu
         batch_size=batch_size, 
         partition="test",
         shuffle=False, 
-        used_samples=-1
+        used_samples=-1,
+        return_also_img_path=True
     )
 
     # get model
@@ -82,7 +153,7 @@ def test(model_name, model_kwargs, checkpoint_path, data_path, batch_size, outpu
     latent_dim = model_kwargs["latent_dim"] if "latent_dim" in model_kwargs else -1
     lambda_center = model_kwargs["lambda_center"] if "lambda_center" in model_kwargs else 0.0
 
-    metrics = evaluate(model, test_data, device)
+    metrics = evaluate(model, test_data, device, output_dir)
 
     # Save metrics and loss to a text file
     with open(f"{output_dir}/test_summary.txt", "w") as f:

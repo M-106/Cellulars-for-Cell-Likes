@@ -5,7 +5,12 @@ NCA for Skin Cancer Classification. Cellular logic on cell-like structures. A co
 
 <br>
 
-> **NCAs on **
+Currently to Do:
+- Continue writing the README
+- Continue with experiments
+- Run test with every experiment again
+- Run eval via docker for every experiment/model
+- update result table
 
 <br><br>
 
@@ -19,7 +24,9 @@ Table of Content
     - [Data](#data)
     - [Hardware](#hardware)
     - [Software Setup](#software-setup)
+    - [Evaluation](#evaluation)
     - [Model](#model)
+- [Our NCA Framework](#our-nca-framework)
 - [Experiments](#experiments)
 - [Results](#results)
     - [Internal Experiment Results](#internal-experiment-results)
@@ -149,16 +156,365 @@ The installation can be reproduced following:
     1. Open a python file and activate the env in VS Code (as current used interpreter)
     2. Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
 
+<br><br>
+
+##### Evaluation
+
+For the evaluation, we relied on the official [ISIC challenge scoring repository](https://github.com/ImageMarkup/isic-challenge-scoring/), which provides the standardized implementation of the competition’s metrics. To ensure full reproducibility and to avoid any form of train–test contamination, all predictions were generated strictly on the held‑out test set using our final trained models.
+
+The scoring environment was executed using the official Docker image. We pulled the container from Docker Hub via: `docker pull isic/isic-challenge-scoring:latest`.
+
+For each prediction file, the evaluation was performed by running the scoring container with the corresponding input CSV and metadata files. The command was about following:
+```
+docker run `
+  --rm `
+  --mount type=bind,source="C:/Users/tobia/workspace/isic_2019_preds/ISIC_2019_Test_GroundTruth.csv",destination=/root/gt.csv,readonly `
+  --mount type=bind,source="C:/Users/tobia/workspace/isic_2019_preds/2026-08-15_15-59-54_NCA_experiment_timed_film_aug.csv",destination=/root/pred.csv,readonly `
+  isic/isic-challenge-scoring:latest `
+  classification `
+  /root/gt.csv `
+  /root/pred.csv
+```
 
 <br><br>
 
 ##### Model
 
-We built a flexible framework, enabeling different NCA architecture-details directly from the configuration file.<br>
-Our base NCA looks like:
-```text
+We built a flexible framework, enabeling different NCA architecture-details directly from the configuration file. The architecture can be controlled in the config file via 
+```
+hidden_channels: 16                             
+steps: 16                                       
+update_blocks: 1                                
+update_blocks_activation_kernel_size: 3         
+update_blocks_activation_kernel_size_2: 1 
+update_blocks_activation: "relu"                
+final_update_block_activation_kernel_size: 1    
+final_update_block_activation: "sigmoid"        
+perception_filter: "sobel"
+```
+
+<br>
+
+Our base NCA looks like: (maybe show controllable parts via config here in this ascii visualization)
 
 ```
+========================================================================================================
+                                      NCA ARCHITECTURE OVERVIEW
+========================================================================================================
+
+   Raw Input Image
+   x: [B, C_in, H, W]
+      |
+      |-----------------------------------+-----------------------------------+
+      |                                   |                                   |
+      |                            [OPTIONAL: FiLM]                 [OPTIONAL: Global Attn]
+      |                           use_film = True                   use_global_attn_context = True
+      |                                   |                                   |
+      v                                   v                                   v
++------------------+           +---------------------+             +---------------------+
+| Input Projection |           |    Latent Model     |             | Image / Latent Cross|
+| Net (Conv2d 1x1) |           | (Frozen Encoder)    |             |  Attention Context  |
++------------------+           +---------------------+             +---------------------+
+      |                                   |                                   |
+      v                                   |                                   |
+   h_0: [B, C_hid, H, W]                  v                                   |
+      |                       latent_z: [B, latent_dim]                       |
+      |                                   |                                   |
+      |                       +-----------------------+                       |
+      |                       | FiLM Generator / MLP  |                       |
+      |                       | (latent_film_time_    |                       |
+      |                       |   activated=True/False|                       |
+      |                       +-----------------------+                       |
+      |                                   |                                   |
+      |                          gamma, beta: [B, C_hid]                      |
+      |                                   |                                   |
+      +===================================|===================================+
+      |                                   v                                   v
+      |                   +-------------------------------------------------------+
+      |  +--------------->|             STEP RECURRANCE LOOP (t = 0 ... steps-1)  |
+      |  |                +-------------------------------------------------------+
+      |  |                |                                                       |
+      |  |                |  1. Perception Layer                                  |
+      |  |                |     - Filter: perception_filter                         |
+      |  |                |     - Types: Sobel, Laplacian, Learnable, Pretrained  |
+      |  |                |     - Out: [B, C_hid * perception.size, H, W]         |
+      |  |                |                                                       |
+      |  |                |  2. First Update Block (NCAUpdateBlock)               |
+      |  |                |     - Applies (gamma, beta) modulation if FiLM        |
+      |  |                |     - Kernel: update_blocks_activation_kernel_size    |
+      |  |                |     - Act: update_blocks_activation                   |
+      |  |                |                                                       |
+      |  |                |  3. [OPTIONAL] Middle Update Blocks                   |
+      |  |                |     - Count: update_blocks - 1                        |
+      |  |                |     - Applies (gamma, beta) modulation if FiLM        |
+      |  |                |                                                       |
+      |  |                |  4. [OPTIONAL] Global Cross-Attention                 |
+      |  |                |     - Enabled if: use_global_attn_context=True        |
+      |  |                |     - Mode A (use_img_global_attn=True):              |
+      |  |                |         Attends to downsampled raw_img                |
+      |  |                |     - Mode B (use_img_global_attn=False):             |
+      |  |                |         Attends to latent_z from Latent Model         |
+      |  |                |                                                       |
+      |  |                |  5. Final Update Block (NCAUpdateBlock)               |
+      |  |                |     - Kernel: final_update_block_activation_kernel_size|
+      |  |                |     - Act: final_update_block_activation (e.g. Sigmoid)|
+      |  |                |                                                       |
+      |  |                |  6. State Residual Addition                           |
+      |  |                |     - h_(t+1) = h_t + update                            |
+      |  |                |                                                       |
+      |  +----------------+-------------------------------------------------------+
+      |                   |
+      +-------------------+
+                          |
+             h_final: [B, C_hid, H, W]
+                          |
+      +-------------------+-------------------+
+      |                                       |
+      v [classification_mode = True]          v [classification_mode = False]
++--------------------------+             Returns Spatial Grid State
+|   Classification Head    |             h_final: [B, C_hid, H, W]
+| - AdaptiveAvgPool2d(1)   |
+| - Flatten                |
+| - Dropout (p=dropout)    |
+| - Linear(C_hid, classes) |
++--------------------------+
+      |
+      v
+Logits: [B, num_classes]
+
+========================================================================================================
+```
+
+More details to our package can be found in Chapter ['Our NCA Framwork'](#our-nca-framework)
+
+<br><br>
+
+---
+### Our NCA Framework
+
+Our **Cellulars for Cell-Likes** package, abbreviated as **cfc**, is a configuration-driven PyTorch framework for experimenting with neural cellular automata (NCAs) on image-classification problems. The project was developed around the ISIC 2019 skin-lesion classification task, but its organization is more general: 
+* models
+* data loading
+* losses
+* optimization
+* evaluation
+* logging
+* checkpoint handling are separated into reusable modules
+
+The central idea is to replace a conventional image-classification backbone with a grid of interacting hidden cells. Each cell stores a local feature vector, observes its neighborhood through a perception operator, and applies a learned update rule repeatedly. Over several iterations, local interactions can transform the initial grid into a spatial representation that is finally summarized by a classification head.
+
+<br>
+
+##### Package orientation
+
+The package is intended primarily as an **experimental research framework**, rather than as a narrowly optimized production library. Important architectural decisions are exposed through a YAML configuration file and passed into the model factory. This makes it possible to compare different NCA designs without rewriting the training script for every experiment. The same training infrastructure can also be used for conventional baselines, autoencoders, variational autoencoders, and hybrid models that combine a standard backbone with an NCA module.
+
+At the repository level, the main components are organized as follows:
+
+| Component | Role in the package |
+|---|---|
+| `cfc.main` | Command-line entry point and mode dispatching |
+| `cfc.model` | NCA, baseline, autoencoder, and hybrid model implementations |
+| `cfc.utils.data` | ISIC dataset loading, splitting, normalization, augmentation, and balancing |
+| `cfc.utils.criterion` | Classification, autoencoder, VAE, and mixed losses |
+| `cfc.utils.optimizer` and `scheduler` | Optimizer and learning-rate scheduler construction |
+| `cfc.utils.metrics` | Balanced accuracy and classification-report computation |
+| `cfc.utils.stepwise_train` | Saving and restoring complete training state |
+| `configs/config.yaml` | User-facing experiment configuration |
+
+<br>
+
+##### Configuration-driven execution
+
+The package is controlled through a single configuration object loaded from YAML. The top-level `mode` selects whether the run performs training, testing, or a convergence check. The `train`, `test`, `model`, and `data` sections then define the experiment details. Configuration values are validated with Pydantic models before the run begins, which provides a clear contract between the YAML file and the Python code.
+
+A typical invocation can therefore remain small and reproducible:
+
+```bash
+pip install -e .
+python -m cfc --config ./configs/config.yaml
+```
+
+The configuration contains both general training parameters and NCA-specific choices. For example, `hidden_channels` controls the feature width of each cell, `steps` determines how many recurrent state updates are performed, and `update_blocks` controls the depth of the learned update rule. Kernel sizes, activation functions, dropout, perception filters, latent conditioning, and global attention can be changed without modifying the main training loop.
+
+<br>
+
+##### The standard NCA
+
+The default NCA consists of four conceptual stages. First, a `1×1` input projection maps the RGB image into a hidden state with `hidden_channels` feature channels. This state is interpreted as a spatial grid of cells. Second, the perception module augments or transforms each cell state so that the update network can access local spatial information. Third, one or more update blocks compute a learned state change. Finally, a classification head applies global average pooling, dropout, and a linear layer to produce class logits.
+
+The recurrent process can be summarized as:
+
+```text
+RGB image
+    │
+    ▼
+1×1 input projection
+    │
+    ▼
+Initial cellular state h₀ ∈ R^(C×H×W)
+    │
+    ├── repeat for t = 1 ... steps ───────────────────────┐
+    │                                                     │
+    │   local perception of hₜ₋₁                           │
+    │          │                                          │
+    │          ▼                                          │
+    │   learned update blocks                             │
+    │          │                                          │
+    │          ▼                                          │
+    │   hₜ = hₜ₋₁ + Δhₜ                                     │
+    │                                                     │
+    └─────────────────────────────────────────────────────┘
+    │
+    ▼
+Global average pooling → dropout → linear classification head
+    │
+    ▼
+Class logits
+```
+
+The residual update, `hₜ = hₜ₋₁ + Δhₜ`, preserves the cellular interpretation: the update rule does not replace the complete state at every iteration, but incrementally changes it. The implementation also uses low-magnitude initialization and supports a final activation such as `sigmoid`, `tanh`, or `leaky_relu` to help keep early updates stable.
+
+<br>
+
+##### Perception and local interaction
+
+A neural cellular automaton needs a mechanism through which a cell can inspect its environment. In cfc, this role is handled by the `Perception` module. The available choices are a fixed Sobel filter, a fixed Laplacian filter, a learnable convolution, or a convolution initialized from pretrained ResNet weights.
+
+For the Sobel option, the input state is combined with horizontal and vertical gradient responses. The Laplacian option adds a second-order spatial response. A learnable filter allows the network to discover an appropriate local interaction pattern during training, while the pretrained option provides an initialization derived from a conventional vision model. In this way, the framework supports experiments ranging from strongly hand-designed local rules to fully learned perception.
+
+<br>
+
+##### Update blocks and recurrent depth
+
+The NCA update rule is built from convolutional update blocks. The first block receives the perceived cellular state, optional intermediate blocks deepen the rule, and the final block produces the state increment. The number of blocks, convolution kernel sizes, hidden width, and activation functions are configurable. A single update block gives a compact local rule; additional blocks allow more expressive transformations within each cellular step.
+
+The parameter `steps` controls a different form of depth. It specifies how often the same recurrent rule is applied to the state. Thus, `update_blocks` changes the complexity of one local transition, whereas `steps` changes the number of transitions through which information can propagate. This separation is particularly useful when studying whether classification performance depends more on the capacity of the update rule or on the number of recurrent interactions.
+
+<br>
+
+##### Global information through FiLM
+
+Purely local updates are well suited to spatial structure, but image classification also requires global semantic information. cfc provides an optional latent-conditioning path based on **Feature-wise Linear Modulation (FiLM)**. A separately trained convolutional autoencoder can provide a latent representation, which is passed through a small multilayer perceptron to generate per-channel scale and bias values, commonly denoted as `gamma` and `beta`.
+
+These values modulate the intermediate activations of the NCA update blocks:
+
+```text
+Input image ──► latent model ──► latent vector z ──► FiLM generator ──► γ, β
+      │                                                            │
+      └──────────────────────► NCA state updates ◄─────────────────┘
+```
+
+The latent model can be loaded through `nca_latent_path` and is frozen when used as a conditioning model. With ordinary FiLM, the same latent-derived modulation is available throughout the recurrent computation. With `latent_film_time_activated`, the current NCA timestep is embedded and supplied to the FiLM generator as well, allowing different iterations to receive different modulation parameters.
+
+<br>
+
+##### Global attention variants
+
+The package also contains optional global-context modules. Image-based global attention lets each NCA state location attend to a downsampled version of the original image. This path uses scaled dot-product attention and a residual connection. Alternatively, a latent vector can serve as the global context through a separate cross-attention module.
+
+The global context is added every update-step and can be weighted with a gamma value.
+
+<!--
+Both variants are deliberately introduced in a conservative way: the residual attention scale is initialized at zero, so the attention branch starts close to an identity mapping. This makes it possible to add global context without forcing the model to rely on the new pathway before it has learned a useful interaction pattern.
+-->
+
+<br>
+
+##### Architecture family
+
+Although the NCA is the main contribution, the model factory exposes several related architectures for controlled comparisons. The repository includes a plain AlexNet-style classifier, an AlexNet-plus-NCA feature-booster variant, convolutional autoencoders, a variational autoencoder, an EfficientNet-based family, and a random classifier baseline. The autoencoder can be used independently or as the latent provider for FiLM-conditioned NCA experiments.
+
+The following table describes the intended role of the main model names. Some branches are primarily experimental and should be validated in the current checkout before being used as production baselines.
+
+| Model name | Purpose |
+|---|---|
+| `standard_nca` | Direct NCA-based image classification |
+| `convae` | Convolutional autoencoder with a latent representation and classifier |
+| `convvae` | Variational version of the convolutional autoencoder |
+| `alexnet` | Conventional convolutional classification baseline |
+| `mixed_alexnet_nca_feature_booster_net` | AlexNet feature extractor followed by NCA-based refinement/classification |
+| `efficientnet` | EfficientNet-style baseline branch |
+| `efficientnet_nca` | EfficientNet features combined with an NCA classifier branch |
+| `random` | Random prediction baseline for sanity checks |
+
+<br>
+
+##### Data pipeline
+
+The included data pipeline is tailored to the ISIC 2019 image-only lesion diagnosis data. It reads the official image and label files, maps the diagnostic categories to integer indices, and creates a reproducible training/validation split. The loader can restrict the number of samples and can optionally downsample classes so that every class has the same number of examples.
+
+Images are resized and normalized with ImageNet mean and standard deviation values. Training augmentation is optional and currently includes horizontal and vertical flips, rotations of up to 180 degrees, and mild color jitter. Validation and test data use deterministic preprocessing without random augmentation. This separation keeps evaluation repeatable while allowing the training distribution to be varied through configuration.
+
+<br>
+
+##### Custom training loop
+
+The training loop is designed to make experiments inspectable and resumable. At startup, it builds the data loaders, obtains the model from the model factory, constructs the criterion, optimizer, and scheduler, and selects CUDA automatically when it is available. During each batch, the loop performs the standard sequence of zeroing gradients, forward propagation, loss computation, backpropagation, gradient clipping, and optimizer stepping.
+
+After each epoch, the scheduler is advanced and validation is performed. The framework records loss and classification metrics in TensorBoard, logs the active configuration, and can save representative images. For NCA models, these diagnostics can include a visualization of the state transition sequence, a PCA projection of the final cellular state, and a numerical stability measure based on the average L2 change between consecutive states.
+
+The training loop also supports staged model training. Autoencoder-based models can initially focus on reconstruction or latent learning and later introduce classification. Hybrid architectures such as AlexNet with an NCA head can similarly use an initial backbone phase before training the NCA component.
+
+<br>
+
+##### Losses, metrics, and evaluation
+
+Loss functions are selected by name in the configuration. In addition to ordinary classification loss, the package contains autoencoder and VAE losses as well as mixed reconstruction-classification objectives. VAE training can use a configurable beta coefficient and an optional smooth beta schedule. These components allow the same experiment framework to cover direct classification, representation learning, and joint reconstruction/classification studies.
+
+For the ISIC-oriented evaluation, the package reports **balanced accuracy** and a classification report. Balanced accuracy is especially appropriate for imbalanced multi-class data because it averages class-wise recall instead of allowing the largest classes to dominate the headline score. A separate test mode loads the selected checkpoint, evaluates it on the test partition, and writes a test summary.
+
+<br>
+
+##### Checkpoints and continuation of training
+
+A central practical feature is exact continuation of interrupted training. At the end of training epochs, cfc stores the latest model, the best model according to the validation objective, and a complete training state containing model, optimizer, scheduler, epoch, and metric information. The state-saving helper also keeps a rotated previous state as a fallback.
+
+When `continue_training` is enabled, the package restores the previous state and resumes from the recorded epoch rather than starting a new experiment. This is useful for long experiments on time-limited machines, because a stopped process can continue without discarding optimizer momentum, scheduler progress, or the current best-model information.
+
+<br>
+
+##### Typical experiment workflow
+
+A complete experiment follows a short sequence. First, the user installs the package in editable mode and prepares the dataset. Second, the dataset path and experiment settings are entered in `configs/config.yaml`. Third, the desired model name and architecture keyword arguments are selected. Finally, the experiment is launched in training mode, and its logs, images, checkpoints, and summaries are written to the configured output directory.
+
+A minimal NCA configuration conceptually looks like this:
+
+```yaml
+mode: train
+
+model:
+  name: standard_nca
+  check_point_path: null
+  kwargs:
+    hidden_channels: 16
+    steps: 8
+    update_blocks: 1
+    update_blocks_activation: relu
+    final_update_block_activation: sigmoid
+    perception_filter: sobel
+    dropout: 0.2
+    use_film: false
+    use_global_attn_context: false
+
+data:
+  path: /path/to/isic2019
+  balance_classes: false
+  augmentation: true
+```
+
+The exact fields and defaults should be checked against the version of `configs/config.yaml` used for the experiment. The important design principle is that the model definition, data regime, optimization setup, and continuation behavior are recorded together, which makes experiments easier to reproduce and compare.
+
+<br>
+
+##### Summary
+
+In summary, cfc provides a compact but broad research framework for neural cellular image classification. Its most distinctive component is a configurable NCA whose local perception, update rule, recurrent depth, latent conditioning, and global-context mechanisms can be varied independently. Around that model, the package supplies the surrounding infrastructure needed for serious experimentation: dataset preparation, augmentation, class balancing, multiple loss families, metrics, TensorBoard logging, visualization, checkpoint selection, and exact training continuation.
+
+The package is therefore useful not only for asking whether an NCA can classify dermoscopic images, but also for studying our broader architectural question: **where should cellular computation be placed; in the original image space, in a learned feature space, or in a latent representation enriched with global context?**
+
+
+
 
 
 <br><br>
@@ -195,6 +551,9 @@ To Do:
 <br><br>
 
 Ideas:
+- Try more NCA configs?
+    - Try other Cell-sizes? -> maybe bigger better for classification
+        - Maybe try a setup where the cells gets bigger and bigger? 
 - NCA + Input-Skip-Connection (?)
 - NCA + Global State as additional Input?
 

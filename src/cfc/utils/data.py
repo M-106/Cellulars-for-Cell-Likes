@@ -28,7 +28,9 @@ class ISIC2019Dataset(Dataset):
                  transform=None, 
                  used_samples=-1,
                  balance_classes=False,
-                 random_state=42):
+                 random_state=42,
+                 return_also_img_path=False
+    ):
         """
         Random split with seed for reproducability. Stratified split to maintain class distribution.
 
@@ -44,6 +46,7 @@ class ISIC2019Dataset(Dataset):
         - UNK → 8
         """
         self.transform = transform
+        self.return_also_img_path = return_also_img_path
         self.class_names = ["MEL", "NV", "BCC", "AK", "BKL", "DF", "VASC", "SCC", "UNK"]
         self.class_to_idx = {name: i for i, name in enumerate(self.class_names)}
         self.idx_to_class = {value: key for key, value in self.class_to_idx.items()}
@@ -151,6 +154,8 @@ class ISIC2019Dataset(Dataset):
         score_weight = self.labels["score_weight"].iloc[idx] if "score_weight" in self.labels.columns else 1.0
         validation_weight = self.labels["validation_weight"].iloc[idx] if "validation_weight" in self.labels.columns else 1.0
 
+        if self.return_also_img_path:
+            return image, label, score_weight, validation_weight, img_path
         return image, label, score_weight, validation_weight
 
 
@@ -166,7 +171,8 @@ def get_data(
         used_samples=-1,
         balance_classes=False,
         img_size=(224, 224),
-        augmentation=False
+        augmentation=False,
+        return_also_img_path=False
     ):
 
     # Standard-Normalization for Pretrained Models (e.g. ImageNet)
@@ -196,7 +202,14 @@ def get_data(
             transforms.Normalize(mean=mean, std=std)
         ])
 
-    dataset = ISIC2019Dataset(data_path=data_path, partition=partition, transform=transformations, used_samples=used_samples, balance_classes=balance_classes)
+    dataset = ISIC2019Dataset(
+        data_path=data_path, 
+        partition=partition, 
+        transform=transformations, 
+        used_samples=used_samples, 
+        balance_classes=balance_classes,
+        return_also_img_path=return_also_img_path
+    )
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)  # num_workers=0
 
