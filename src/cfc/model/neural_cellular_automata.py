@@ -496,6 +496,7 @@ class NeuralCellularAutomata(torch.nn.Module):
             if self.film_time_based:  
                 # call latent_model
                 z = self.latent_model(x, classify=False)[1]
+                gamma = beta = None
             else:
                 gamma, beta = self._get_film_params(x)
                 z = None

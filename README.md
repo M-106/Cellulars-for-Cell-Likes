@@ -1,36 +1,120 @@
 
 # Cellulars for Cell-Likes
 
-NCA for Skin Cancer Classification and Segmentation. Cellular logic on cell-like structures. A comparison between SOTA approaches and neural cellular automates.
+NCA for Skin Cancer Classification. Cellular logic on cell-like structures. A comparison between SOTA approaches and neural cellular automates.
 
 <br>
 
-> **NCAs on ISIC 2019 Image Only Lesion Diagnosis**
+> **NCAs on **
 
 <br><br>
 
-- [Core Idea](#core-idea)
-- [Installation](#installation)
-- [Experiment Plan](#experimentplan)
-- [Experiments & Results](#experiments--results)
-- [Sources](#sources)
+Table of Content
+- [Introduction](#introduction)
+- [Related Work](#related-work)
+    - [DL in Dermoscopic Image Analysis](#dl-in-dermoscopic-image-analysis)
+    - [Neural Cellular Automata in Medical Imaging](#neural-cellular-automata-in-medical-imaging)
+    - [Limitations of NCAs for Image Classification](#limitations-of-ncas-for-image-classification)
+- [Methodology](#methodology)
+    - [Data](#data)
+    - [Hardware](#hardware)
+    - [Software Setup](#software-setup)
+    - [Model](#model)
+- [Experiments](#experiments)
+- [Results](#results)
+    - [Internal Experiment Results](#internal-experiment-results)
+    - [Placing in the ISIC 2019 Leaderboard](#placing-in-the-isic-2019-leaderboard)
+- [Discussion](#discussion)
+- [Limitations](#limitations)
+- [Conclusion & Future Work](#conclusion--future-work)
 
 
 <br><br>
 
 ---
-### Core Idea
+### Introduction
 
-Applying neural cellular automates onto skin cancer image data for classification (and maybe segmentation) and comparing the results to [ISIC 2019 Lesion Diagnosis (Image Only)](https://challenge.isic-archive.com/leaderboards/2019/).
+<!--goal-->
+Our project "Cellulars for Cell-Likes" wants to apply neural cellular automates onto skin cancer image data for classification and comparing the results to the leaderboard of [ISIC 2019 Lesion Diagnosis (Image Only)](https://challenge.isic-archive.com/leaderboards/2019/). So our project is fully wrapped around the [ISIC 2019 Challenge](https://challenge.isic-archive.com/landing/2019/).<br>
+The Challenge provides train and test data from the BCN_20000 Dataset, HAM10000 Dataset, and MSK Dataset. Overall there are 8 categories<!--[[0]](https://doi.org/10.48550/arXiv.1803.10417)-->:
+1. Melanoma
+2. Melanocytic nevus
+3. Basal cell carcinoma
+4. Actinic keratosis
+5. Benign keratosis (solar lentigo / seborrheic keratosis / lichen planus-like keratosis)
+6. Dermatofibroma
+7. Vascular lesion
+8. Squamous cell carcinoma
+9. None of the others 
+The goal metric is a normalized multi-class accuracy metric also called balanced accuracy.<br>
+It is a challenging task with images with many varities.
+
+Our motivation for this project is split into 2. First, to our knowledge there is no Neural Cellular Automata Approach tested on this challenge and second, it is known that there is a performance gap between NCAs and large, more complex architectures in image classification [[1]](https://doi.org/10.48550/arXiv.2508.12324)[[2]](https://doi.org/10.48550/arXiv.2404.05584) which is also caused due to the missing global context and too much variety in data, and we want to do different experiments to investigate in closing this gap. 
+
+<br><br>
+
+---
+### Related Work
+
+##### DL in Dermoscopic Image Analysis
+
+Deep learning models have established SOTA benchmarks in dermatological image analysis, like the ISIC 2019. Standard approaches heavily rely on CNNs (such as EfficientNets and ResNets) [[3]](https://doi.org/10.1109/tbme.2019.2915839)[[4]](https://doi.org/10.1016/j.dajour.2023.100278)[[5]](https://doi.org/10.3390/bioengineering11080810)[[6]](https://www.researchgate.net/publication/384893629_Benchmarking_Deep_Learning_Models_for_Dermatological_Image_Analysis_EfficientNet_Takes_the_Lead) and Vision Transformers, achieving balanced accuracies up to 89.5%, depending on the benchmark and the time of the benchmark. They often use multi-scale feature extraction, heavy ensemble strategies and external data to reach such a high accuracy. <br>
+These models require millions of parameters, high compuational costs, and are difficult to interpret, limiting their diagnostic valuability in clinical environments [[7]](https://doi.org/10.48550/arXiv.2005.02000)[[8]](https://doi.org/10.48550/arXiv.2203.08807).<br>
+Hint: During the ISIC 2019, Vision Transformer where not etablished yet, so competitors used CNN-based networks.
+
+<br>
+
+##### Neural Cellular Automata in Medical Imaging
+
+Neural Cellular Automata (NCAs) have emerged in recent years as lightweight, parameter-efficient alternatives that rely only on localized, iterative updates to achieve global state transitions [[9]](https://doi.org/10.23915/distill.00023)[[10]](https://doi.org/10.48550/arXiv.2508.12322)[[11]](https://doi.org/10.1038/s44335-025-00026-4).<br>
+Particulary in medical domain applications, NCAs shown substantial success in image segmentation and sythesis tasks. For instance, [MedSegDiffNCA (Mittal et al., 2025)](https://doi.org/10.48550/arXiv.2501.02447) demonstrated that combining NCAs with diffusion models achieves competitive DICE segmentation scores on ISIC datasets while reducing parameter counts by over 60x compared to standard U-net backbones. Similarly, [Yue et al. (2024)](https://doi.org/10.1016/j.bspc.2024.106547) integrated NCAs into UNet latent bottlenecks for skin lesion segmentation, confirming that local cell rules can capture spatial structures effectivly.
+
+<br>
+
+##### Limitations of NCAs for Image Classification
+
+Despite their success in dense spatial tasks (like segmentation), applying pure NCAs to multi-class image classification remains fundamentally challenging [[1]](https://doi.org/10.48550/arXiv.2508.12324)[[2]](https://doi.org/10.48550/arXiv.2404.05584)[[12]](https://doi.org/10.48550/arXiv.1809.02942)[[13]](https://doi.org/10.48550/arXiv.2607.24529). Recent work highlights a persistent performance gap between NCAs and standard vision backbones when summarizing global semantics. [Deutges et al. (2024)](https://doi.org/10.1007/978-3-031-72384-1_65) noted that converting spatial cell grids into a single categorical prediction forces the local update rule to handle both spatial feature propagation and global dimensionality reduction simultaneously, because of that that they tried to split these tasks up.<br>
+Furthermore, [Yang et al. (2025)](https://doi.org/10.48550/arXiv.2508.12324) identified that standard local neighborhoods (3x3) struggle to propagate fine-grained diagnostic features across large images without losing context, necessitating specialized pooling layers (such as attention pooling) to bridge the local-to-global aggrgeation bottleneck.
+
+
+<br><br>
+
+---
+### Methodology
+
+##### Data
+
+We used the data from ISIC 2019 Image Only Lesion Diagnosis Challenge with 25.332 training images and 8.239 test samples. During training we used 20% of the train data as validation set.<br>
+Our data pipeline includes a normalization step using the ImageNet mean and standard deviation.<br>
+Augmentation was optional (specified in the experiment details if used). Our augmentation is a small collection of standard techniques:
+* Horizontal Flip
+* Vertical Flip
+* Rotation (up to 180°)
+* Color Jitter (brightness=0.1, contrast=0.1, saturation=0.1)
+<br>
+
+We also have an optional downsample to have a balanced amount of each class, also specified if used.
+
+<br>
+
+<a href="https://www.researchgate.net/figure/Samples-of-the-2019-ISIC-dataset-aMelanoma-MEL-bMelanocytic-Nevus-NV-cBasal_fig3_351089784"><img src="https://www.researchgate.net/publication/351089784/figure/fig3/AS:11431281179150051@1691159178365/Samples-of-the-2019-ISIC-dataset-aMelanoma-MEL-bMelanocytic-Nevus-NV-cBasal.png" alt="Samples of the 2019 ISIC dataset. (a) Melanoma – MEL, (b) Melanocytic Nevus – NV, (c) Basal Cell Carcinoma – BCC, (d) Actinic Keratosis – AK, (e) Benign Keratosis – BKL, (f) Dermatofibroma – DF, (g) Vascular Lesion – VASC, (h) Squamous Cell Carcinoma – SCC"/>Samples of the 2019 ISIC dataset. (a) Melanoma – MEL, (b) Melanocytic Nevus – NV, (c) Basal Cell Carcinoma – BCC, (d) Actinic Keratosis – AK, (e) Benign Keratosis – BKL, (f) Dermatofibroma – DF, (g) Vascular Lesion – VASC, (h) Squamous Cell Carcinoma – SCC<br><sub><sup>From: A deep analysis on high‐resolution dermoscopic image classification - Scientific Figure on ResearchGate. Available from: https://www.researchgate.net/figure/Samples-of-the-2019-ISIC-dataset-aMelanoma-MEL-bMelanocytic-Nevus-NV-cBasal_fig3_351089784 [accessed 16 Aug 2026]</sup></sub></a>
+
 
 
 
 
 <br><br>
 
----
-### Installation
+##### Hardware
 
+We used *Shadow PC* to harnessing a [NVIDIA RTX 2000 Ada Generation](https://www.nvidia.com/en-us/products/workstations/rtx-2000/) with 16 GB VRAM, NVidia-Driver-Version 565.90 and CUDA-Version 12.7.
+
+<br><br>
+
+##### Software Setup
+
+We used Python 3.14 with torch 2.5.1 and torchvision 0.20.1. A complete list of our dependencies are in the [requirements.txt](./requirements.txt).<br>
+The installation can be reproduced following:
 1. Prepare Env
     1. Install Anaconda
     2. Open Anaconda Prompt
@@ -38,9 +122,16 @@ Applying neural cellular automates onto skin cancer image data for classificatio
         ```bash
         conda create -n cfc python=3.14 pip -y
         conda activate cfc
+
+        # install torch cuda version:
         # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
         # pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu126 --trusted-host download.pytorch.org
         # pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118
+
+        # or maybe use the conda version:
+        conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+
+        # install our repo and the needed dependencies (expect torch and torchvision)
         pip install -e .
         ```
     4. Quick check:
@@ -53,20 +144,27 @@ Applying neural cellular automates onto skin cancer image data for classificatio
     - Download `Test Data` Task 1 -> 3,6 GB
     - Download `Test Ground Truth` -> 454 KB
     - Unzip everything into one folder
-3. Adjust the config file
+3. Adjust the [config file](./configs/config.yaml)
 4. Run it
-    1. Activate the env in VS Code (as current used interpreter)
-    2. Open any python file + Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
+    1. Open a python file and activate the env in VS Code (as current used interpreter)
+    2. Click on the arrow next to the Run button and choose "Debug using launch.json" and choose cfc then
 
 
-> Shadow PC PyTorch Block Workaround:
-> - comment out all 3 torch related line sin the projecttoml file
-> - Use anaconda isntallation instead ```conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia```
+<br><br>
+
+##### Model
+
+We built a flexible framework, enabeling different NCA architecture-details directly from the configuration file.<br>
+Our base NCA looks like:
+```text
+
+```
+
 
 <br><br>
 
 ---
-### Experimentplan
+### Experiments
 
 - Few-Sample-Overfitting
 - "Standard" Training
@@ -107,8 +205,9 @@ Ideas:
 <br><br>
 
 ---
-### Experiments & Results
+### Results
 
+<!--
 > First run, make a "dry run" & a overfit-test. Maybe you have to remove the last activation layer.
 
 Checking the results do:
@@ -117,61 +216,9 @@ Checking the results do:
     ```bash
     conda activate cfc && tensorboard --logdir="C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-08-03_20-10-17_NCA_experiment\logs"
     ```
-
-<!--
-"F:\Studium\Master\3.Semester\Teamwork\Cellulars-for-Cell-Likes\output\2026-07-05_14-33-30_overfit\logs"
-"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-08_22-07-08_experiment_run\logs"
-"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-11_18-10-08_experiment_run\logs"
-"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-20_19-07-14_experiment_run_fixed\logs"
-"C:\Users\Shadow\src\Cellulars-for-Cell-Likes\output\2026-07-21_13-31-48_experiment_run_fixed\logs"
-"2026-07-23_16-09-31_experiment_run_fixed"
 -->
 
-<br>
-
-**Experiment 1: Overfitting on 5 Samples**
-
-Configs:
-```yaml
-train:
-    num_epochs: 200
-    batch_size: 5
-    learning_rate: 0.001
-    weight_decay: 0.0001
-    criterion: "focal_loss"
-    optimizer: "Adamw"
-    scheduler: "cosine"
-    output_dir: "./output"
-    exp_name: "overfit"
-    used_train_samples: 5
-    used_val_samples: 5
-```
-
-Result on Test-Data with official weighting:
-```text
-Test Metrics:
-  - balanced_accuracy: 0.21658527520156512
-  - detailed_report:
-              precision    recall  f1-score   support
-
-         MEL       0.33      0.24      0.28      1775
-          NV       0.86      0.35      0.50      6137
-         BCC       0.00      0.00      0.00         0
-          AK       0.02      0.03      0.03       326
-         BKL       0.00      0.00      0.00         0
-          DF       0.00      0.00      0.00         0
-        VASC       0.00      0.00      0.00         0
-         SCC       0.00      0.00      0.00         0
-         UNK       0.00      0.00      0.00         0
-
-    accuracy                           0.32      8238
-   macro avg       0.13      0.07      0.09      8238
-weighted avg       0.71      0.32      0.43      8238
-```
-
-
-<br><br>
-
+##### Internal Experiment Results
 
 **Overall Results:**
 
@@ -272,30 +319,106 @@ Standard Values are:
 
 <br><br>
 
----
-### Approach Idea: Image-Classification-Task NCA
 
-FIXME
+##### Placing in the ISIC 2019 Leaderboard
+
+
+
+| Team | Approach | Balanced Accuracy |
+| --- | --- | --- |
+| DAISYLab<br>Hamburg University of Technology/University Medical Center Hamburg-Eppendorf | Ensemble of Multi-Res EfficientNets + SEN154 2 | 0.636 |
+| DysionAI<br>DYSION AI, Inc, Beijing, China |  | 0.607 |
+| AImageLab & PRHLT<br>Unimore & UPV | ensemble, ood threshold 100% | 0.593 |
+| DermaCode | 13 models + hierarchical approach to select outliers | 0.578 |
+| Nurithm Labs | Densenet-161 with heavy use of random crops | 0.569 |
+| Torus Actions | Simple test approach | 0.563 |
+| BITDeeper<br>Beijing Institute of Technology | MelaNet: A Deep Dense Attention Network for Melanoma Detection in Dermoscopy Images | 0.558 |
+| SYSU-MIA-Group<br>Sun Yat-sen University Medical Image Analyze Group | Class-centroid-Based Openset Classfication method on Skin Lession | 0.557 |
+| MelanoNorm_IITRopar<br>Indian Institute of Technology Ropar | Classification Using Stacking and Long-Tail Distribution: High Confidence Interval | 0.546 |
+| MH_team | Softmax Ensemble Model and Sigmoid Ensemble Model | 0.544 |
+| BGU_hackers<br>Ben Gurion University | AAAR Ensemble pruning Approach | 0.543 |
+| SabanciUnivTeam<br>Sabanci University | Submission 3 - Anomaly Detection | 0.533 |
+| deltamicro<br>Delta Micro Technology Inc | transferlearning-ensemble-averaging | 0.532 |
+| offer_show<br>iSee-SYSU | Ensemble of model 1 and model 2 | 0.532 |
+| MIP<br>Southern Medical University | ensemble three ResNext50 with SE Block | 0.531 |
+| Tencent Medical AI Lab | Top models ensemble with threshold | 0.525 |
+| bashiri | Deep Convolution Neural Network with data augmentation | 0.523 |
+| Airdoctor | Embedding vectors and Ensemble models | 0.522 |
+| One-Two-Three | VGG-16 for Skin Lesion Diagnosis | 0.519 |
+| shallow learning<br>Institute of Automation, Chinese Academy of Sciences, Beijing 100190, China | Skin Lesion Analysis Towards Melanoma Detection using Deep Neural Networks | 0.518 |
+| VisinVis<br>ETRI | Ensembled Transfer Neural Networks by using Lesion Correlation Learning : Approach 3 | 0.513 |
+| cu<br>cuhk | Ensembles with external data | 0.510 |
+| CureSkinAI<br>CureSkin | Convolutional Neural Networks Ensemble towards Skin Lesion Analysis of Dermoscopic Images | 0.509 |
+| Predicthy LLC | Take max value among the combination of four neural networks | 0.507 |
+| Hsinwei | Convolutional Ensemble with Out-of-Distribution Detector | 0.505 |
+| MMU-VCLab<br>Manchester Metropolitan University | Two-stage Ensemble Method | 0.502 |
+| Yongsheng Pan | FV-RES | 0.501 |
+| Pan Galactic | Deep Learning Resnet50 | 0.493 |
+| SY2<br>Beihang University | Skin Lesion Diagnosis using color constancy and loss weighting with external dataset 03 | 0.492 |
+| logreg | EfficientNet b1 with augmentations | 0.492 |
+| MGI<br>National Institutes of Biotechnology Malaysia | Densenet161 with discriminative learning rate | 0.489 |
+| gxl_xgy_llz_victory<br>Institute of automation, Chinese academy of sciences | Ensembled Model for Skin Lesion Classification | 0.489 |
+| Mt.Smart<br>MTlab,Meitu Inc | Multiple Convolution Neural Net Ensemble | 0.482 |
+| BMIT<br>Biomedical and Multimedia Information Technology, University of Sydney | 152 Layer Resnet | 0.481 |
+| Aiden Gatani | densenet201 | 0.470 |
+| Le-Health<br>Lenovo Research | ensemble strategy 2 | 0.469 |
+| SRMC<br>DataGenius | Approch 1 : Usable Predictive Model - Densenet121 | 0.465 |
+| SY1<br>Beihang university | Skin Lesion Diagnosis using discrimination criterion | 0.464 |
+| Panetta's Vision and Sensing Systems Lab<br>Tufts University | One-class SVM pre-filter + VGG16 CNN | 0.445 |
+| IML group - DFKI<br>Interactive Machine Learning (IML) - German Research Center for Artificial Intelligence (DFKI) | One-class SVM pre-filter + VGG16 CNN | 0.445 |
+| SIGMA<br>NUST | Ensemble of Fine-tuned DNNs for Skin Lesion Image Classication | 0.438 |
+| skychain | resnext50_32x4d | 0.437 |
+| SJ_T1 | Ten1 | 0.429 |
+| KDIS<br>University of Cordoba & Maimonides Biomedical Research Institute of Cordoba | Multi-view convolutional architecture - Margin sampling version | 0.429 |
+| SUMMER | Feature Fusion for Accurate Skin Lesion Analysis | 0.427 |
+| AIRL<br>Central South University | Skin Lesion Classification with Out-of-Distribution Detection Using Deep Neural Network Ensemble	 | 0.426 |
+| sysutest1 | mcd1 | 0.423 |
+| I don't know what to eat | SEnet154 | 0.419 |
+| UH ML Lab<br>University of Hawaii at Manoa | Inceptionv3 with CBAM | 0.419 |
+| LLCW<br>Institute of Automation, Chinese Academy of Sciences | InceptionV3 with Transfer Learning | 0.405 |
+| sstl<br>上海计算机软件技术开发中心 | Fine-grained skin image classification | 0.370 |
+| Cihan Soylu | Transfer learning with DenseNet201 | 0.370 |
+| CrazyLearningTeam | CrazyLearningTeam | 0.346 |
+| SB<br>EPFL | Skin Lesion Analysis Towards Melanoma Detection using Siamese neural network | 0.329 |
+| SIBET CAS<br>Suzhou Institute of Biomedical Engineering and Technology, Chinese Academy of Sciences | Semi-Supervised GAN | 0.327 |
+| UTHealth-Onto.<br>University of Texas Health Science Center at Houston | Random Forest Ensemble_xy | 0.315 |
+| SharpestMinds | Data Augmentation and Transfer Learning with ResNet50 with Cyclical Learning Rates | 0.304 |
+| SkinLegion<br>Persistent Systems Ltd | Baseline Classifier | 0.273 |
+| mvlab-skin<br>Indian Institute of Technology Roorkee | ISIC 2019 : Deep Ensembled Framework for Skin Lesion Analysis Towards Melanoma Detection (DEFSMD) | 0.258 |
+| YouMe AI | Ensembles of Deep Convolution Neural Networks - updated | 0.251 |
+| IT Derm Lab<br>DBE | Fine tune Resnet | 0.109 |
+| jasdeep<br>Singh | Asymmetrical loss function and cutout along the corners | 0.108 |
+| TUKL<br>NUST | ResNet50 ConvNet using cyclical learning rates and transfer learning | 0.106 |
+| P | ResNet50 | 0.048 |
 
 
 <br><br>
 
 ---
-### Approach Idea: Multi-Task NCA
-
-The NCA grids have 16 channels and the input image come into the first 3 channels. Now the automat runs 32 steps.
-
-Define loss in a way that after 32 steps:
-- channel 4 have segmentation mask (loss against gt mask) => IoU Loss
-- channel 5 gets one value over the whole widthxheight which is the classification (loss against classification label) -> depends on the classes (just 2?) => Cross-Entropy
-
-Maybe in that way the NCA looks at the shape and symmetry for channel 5 (classification) which would also been done by a doctor (I guess). 
+### Discussion
 
 
 <br><br>
 
 ---
-### Sources
+### Limitations
+
+
+<br><br>
+
+---
+### Conclusion & Future Work
+
+
+
+
+
+
+<!--
+<br><br>
+
+---
+### References
 
 - Benchmark (Data & Comparison)
     - [ISIC-2019](https://www.kaggle.com/datasets/salviohexia/isic-2019-skin-lesion-images-for-classification)
@@ -317,7 +440,7 @@ Maybe in that way the NCA looks at the shape and symmetry for channel 5 (classif
     - [Measuring Prediction Uncertainty in Neural Cellular Automata](https://arxiv.org/abs/2605.26726)
     - [Skin cancer segmentation and recognition from dermoscopy images: a novel framework based on improved DeepLabV3+ and network-level fused deep architectures](https://www.sciencedirect.com/science/article/pii/S209012322500654X)
 
-
+-->
 
 
 

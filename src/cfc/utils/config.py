@@ -44,7 +44,6 @@ def save_config(config, path):
         yaml.dump(config.dict(), file_)
 
 
-
 class TrainConfig(BaseModel):
     num_epochs: int
     batch_size: int
@@ -63,7 +62,6 @@ class TrainConfig(BaseModel):
     used_val_samples: int
     continue_training: bool
     last_training_output_dir: str
-
 
 
 class TestConfig(BaseModel):
@@ -93,7 +91,6 @@ class DataConfig(BaseModel):
     path: str
     balance_classes: bool = False
     augmentation: bool = False
-
 
 
 class Config(BaseModel):
