@@ -21,12 +21,12 @@ train:
     warmup_epochs: 0
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "NCA_experiment_aug"  # NCA_experiment_global_attn_latent
+    exp_name: "efficientnet"  # NCA_experiment_global_attn_latent
     # "NCA_experiment_film_balanced" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5, 500
     used_val_samples: -1   # -1, 5, 500
-    continue_training: True
-    last_training_output_dir: "./output/2026-08-16_15-19-04_NCA_experiment_aug"
+    continue_training: False
+    last_training_output_dir: "./output/2026-08-17_21-10-08_NCA_experiment_growing_cells_balanced_aug"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -45,13 +45,14 @@ train:
 
 
 test:
-    batch_size: 6
+    batch_size: 64
     output_dir: "./output"
 
 
 model:
-    name: "standard_nca"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca, random
-    check_point_path: "./output/2026-08-15_15-59-54_NCA_experiment_timed_film_aug"  # None
+    name: "efficientnet"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca, random
+    check_point_path: None 
+    # "./output/2026-08-15_15-59-54_NCA_experiment_timed_film_aug"  # None
     # "./output/2026-07-24_10-57-30_experiment_run_fixed"  # "./output/2026-07-08_22-07-08_experiment_run" 
     # "./output/2026-07-05_23-45-49_overfit/latest_model.pth" 
     # "./output/X/best_model.pth" 
@@ -61,7 +62,7 @@ model:
         hidden_channels: 16                             # 8, 16, 32, 64, 128
         steps: 16                                       # 8, 16, 32, 64, 128
         update_blocks: 1                                # 1, 2, 4, 8, 16
-        update_blocks_activation_kernel_size: 3         # 3
+        update_blocks_activation_kernel_size: 101         # 3
         update_blocks_activation_kernel_size_2: 1 
         update_blocks_activation: "relu"                # "relu", "leaky_relu"
         final_update_block_activation_kernel_size: 1    # 1
@@ -85,7 +86,7 @@ data:
     # "F:/data/ISIC-2019_Skin_Lesion"
     # name: "isic-2019"
     balance_classes: False
-    augmentation: True
+    augmentation: False
 
 
 

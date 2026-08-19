@@ -312,15 +312,16 @@ class NCAUpdateBlock(nn.Module):
         super().__init__()
         self.is_final_block = is_final_block
 
-        if self.is_final_block:
-            padding1 = 0
-        else:
-            padding1 = 1
+        # padding = "same" should have the same effect but also works with different kernel sizes
+        # if self.is_final_block:
+        #     padding1 = 0
+        # else:
+        #     padding1 = 1
 
-        self.conv1 = nn.Conv2d(input_channels, hidden_channels, kernel_size=kernel_size, padding=padding1)
+        self.conv1 = nn.Conv2d(input_channels, hidden_channels, kernel_size=kernel_size, padding="same")
         self.activation = activation
         if not self.is_final_block:
-            self.conv2 = nn.Conv2d(hidden_channels, output_channels, kernel_size=kernel_size_2, padding=0)
+            self.conv2 = nn.Conv2d(hidden_channels, output_channels, kernel_size=kernel_size_2, padding="same")
 
         # formular: output_size = input_size + 2*padding - (kernel_size - 1)
         # we use padding 1, so that the whole image/grid is processed 
