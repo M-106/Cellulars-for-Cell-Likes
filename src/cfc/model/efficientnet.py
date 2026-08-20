@@ -68,11 +68,19 @@ class EfficientNetNCAClassifier(nn.Module):
 
         self.model = efficientnet_b4(weights=EfficientNet_B4_Weights.DEFAULT)
 
-        features = self.model.extract_features(torch.zeros(2, input_channels, input_height, input_width))
+        # investigate into the model:
+        # print(self.backbone)
+        # print(dir(self.backbone))
+        # print(help(self.backbone))
+        # print(vars(self.backbone))  # shows only vars which where set in init
+        # import inspect
+        # print(inspect.getmembers(self.backbone, inspect.ismethod))
+
+        features = self.model.features(torch.zeros(2, input_channels, input_height, input_width))
         model_out_channels = features.shape[1] # 1792 for EfficientNet-B4
 
         # --- Classification ---
-        self.classifier = NeuralCellularAutomata(
+        self.nca = NeuralCellularAutomata(
             input_channels=model_out_channels, 
             num_classes=num_classes, 
             hidden_channels=hidden_channels, 
@@ -87,14 +95,20 @@ class EfficientNetNCAClassifier(nn.Module):
             dropout=dropout,
             classification_mode=True
         )
-        
-
 
     def forward(self, x, classify=True):
-        x = self.model.extract_features(x) # Shape: [B, 1792, H, W]
+        x = self.model.features(x) # Shape: [B, 1792, H, W]
         if classify:
-            x = self.classifier(x)
+            x = self.nca(x)
         return x
+
+    # wrapper
+    def backbone(self, x, classify=False):
+        return self.model.features(x)
+
+    def get_last_state(self, x):
+        x = self.model.features(x)
+        return self.nca.get_last_state(x)
 
 
 

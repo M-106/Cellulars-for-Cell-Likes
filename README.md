@@ -833,14 +833,23 @@ Standard Values are:
 ---
 ### Limitations
 
-> Due to the high amount of hyperparameters and the relative long time to train a model, we could only test a limited amount of hyperparamter-configurations.
+Our work aims to investigate the performance of NCA models on the ISIC-2019 skin-cancer image-classification task and how to improve it. Due to limited time and resources, we used only one fixed base architecture for our NCA. Consequently, we cannot provide information on how well other NCA models or designs would perform. However, we developed our base NCA with proven NCA models in mind, designed it flexibly so that experiments can alter specific components, and strove to build a high-performing classification NCA. Should any design flaws or better alternatives exist that we were unable to identify, we clarify that here.
 
-Only one architecture (varies only little bit)
+While our flexible design allowed us to try out many different variations, we could only execute a limited number of experiments due to time constraints and a relatively long training time of approximately one day for 50 epochs. This was especially challenging given the high number of hyperparameters available to adjust, which would ideally require significantly more experimental runs.
 
-limited epochs -> ncas need many epochs, but we investigated into that and most models already arrived at a learning stop.
+Along with limited time and long training runtimes came another important limitation: the total number of epochs. NCAs often require training over many epochs to achieve convergence, but we capped our training at 50 epochs to facilitate a higher volume of experiments. Nevertheless, we conducted one experiment with 100 epochs to observe whether more epochs were truly beneficial in this context. We also analyzed whether learning had already stagnated after 50 epochs, which proved to be the case in approximately 75% of our experiments.
+
+Finally, the balanced downsampling to 500 data points and the data augmentation applied in the NCA with global attention experiments served as a fair compensation for the drastic reduction in training samples. However, this approach complicates the interpretation of the results and partially limits our insights. To better evaluate these effects, we performed a few additional experiments using balanced class downsampling and data augmentation to estimate the specific impact of these two sampling techniques on overall model performance.
+
+<!--
+Our work wants to investigate into the performance of NCA-models on the ISIC-2019 skin-cancer image-classification task and how to improve it. Due to limited time and ressource we use only one fix base-architecture for our NCA. So we cannot provide information on how well the performance on other NCA-models/designs is. However, we designed our base NCA with other proofen NCA-models in mind, designed it flexible so that experiment can change parts of our model, and tried our best to design a high performing classification NCA. If that there is a design-flaw or better alternatives, we cannot identify, so we clarify it here.
+
+While our flexible design does give us the chance to tryout many different varientions, our work could only execute a limited amount of experiment, through the limited time for this work and the relatively long training time of about 1 day for 50 epochs. That is especially challenging, because we had a high amount of hyperparameter to chance and we would have to run much more experiments. 
+
+With limited time and long training time comes another important limitation for our work: the epoch amount. NCAs often have to train many epochs for convergence but we limited our training epochs to 50 epochs to be able to run more experiments. Nethertheless we run one experiment with 100 epochs to get a tendency if more epochs really are important in this case. We also investigated if the learning after 50 epochs already stagnated, which was in round about 75% of the experiments the case. 
 
 The balanced downsampling to 500 datapoints and data augmentation used at the NCA with global attention experiments is a fair equalization to the massive reduction of trains samples but does lead into a more challenging interpretation of the results and partwise does limit our ability to interprete our results. To improve the ability of interpretation we also made some few experiments with balanced class data downsampling and data augmentation, to estimate the influence of these 2 train sample techniques towards the model performance.
-
+-->
 
 <br><br>
 

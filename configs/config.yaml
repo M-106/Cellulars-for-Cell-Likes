@@ -21,12 +21,12 @@ train:
     warmup_epochs: 0
     scheduler: "cosine"  # "cosine", "step"
     output_dir: "./output"
-    exp_name: "efficientnet"  # NCA_experiment_global_attn_latent
+    exp_name: "efficientnet_nca"  # NCA_experiment_global_attn_latent
     # "NCA_experiment_film_balanced" #  "experiment_run_fixed"
     used_train_samples: -1  # -1, 5, 500
     used_val_samples: -1   # -1, 5, 500
-    continue_training: False
-    last_training_output_dir: "./output/2026-08-17_21-10-08_NCA_experiment_growing_cells_balanced_aug"
+    continue_training: True
+    last_training_output_dir: "./output/2026-08-20_16-18-52_efficientnet_nca"
     # 2026-07-08_22-07-08_experiment_run
     # 2026-07-11_18-10-08_experiment_run
     # 2026-07-14_22-06-58_experiment_run
@@ -50,7 +50,7 @@ test:
 
 
 model:
-    name: "efficientnet"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca, random
+    name: "efficientnet_nca"  # standard_nca, convvae, conve, alexnet, mixed_alexnet_nca_feature_booster_net, efficientnet, efficientnet_nca, random
     check_point_path: None 
     # "./output/2026-08-15_15-59-54_NCA_experiment_timed_film_aug"  # None
     # "./output/2026-07-24_10-57-30_experiment_run_fixed"  # "./output/2026-07-08_22-07-08_experiment_run" 
